@@ -26,6 +26,9 @@ class Spectrum:
                 # This looks like the right type of object.
                 self.averagingMode = dataObject['mode']
                 self.spectrum = dataObject['data']
+                # Convert all our frequencies to be in MHz.
+                for i in xrange(0, len(self.spectrum)):
+                    self.spectrum[i][0] = self.spectrum[i][0] * 1000.
         return None
 
     def getAveragingMode(self):
@@ -60,6 +63,9 @@ class Measurement:
         # 5. The time quantities, including MJD and hour angles.
         self.mjd = None
         self.hourAngle = None
+        # 6. The channel width for each band, and the band frequency ranges.
+        self.channelWidth = []
+        self.bandRanges = []
         # We only care about a single Stokes, which we need to be told about.
         if stokes is None:
             stokes = "I"
@@ -73,6 +79,7 @@ class Measurement:
                 # This looks right.
                 # Store our own metadata first.
                 self.centreFrequencies = measureObject['centreFreqs']
+                # Ensure they are floats.
                 self.flaggedFraction = measureObject['flaggedFraction']
                 for i in xrange(0, len(measureObject['closurePhase'])):
                     self.closurePhase.append({
@@ -88,7 +95,51 @@ class Measurement:
                 for i in xrange(0, len(measureObject['fluxDensityData'])):
                     if measureObject['fluxDensityData'][i]['stokes'] == self.stokes:
                         self.spectrum = Spectrum(measureObject['fluxDensityData'][i])
+                # Work out the channel width per band.
+                halfBandwidth = 1024
+                if self.spectrum is not None:
+                    specArr = self.spectrum.getSpectrumArrays()
+                    for i in xrange(0, len(self.centreFrequencies)):
+                        self.centreFrequencies[i] = float(self.centreFrequencies[i])
+                        # Find the nominal frequency ranges.
+                        bandRange = [ self.centreFrequencies[i] - halfBandwidth,
+                                      self.centreFrequencies[i] + halfBandwidth ]
+                        self.bandRanges.append(bandRange)
+                        chanWidth = 2 * halfBandwidth
+                        for j in xrange(1, len(specArr['freq'])):
+                            if (specArr['freq'][j] >= bandRange[0] and specArr['freq'][j] <= bandRange[1] and
+                                specArr['freq'][j - 1] >= bandRange[0] and specArr['freq'][j - 1] <= bandRange[1]):
+                                width = abs(specArr['freq'][j] - specArr['freq'][j - 1])
+                                if width < chanWidth:
+                                    chanWidth = width
+                        self.channelWidth.append(float("{0:.2f}".format(chanWidth)))
         return None
+
+    def getMeanMjd(self):
+        # Return the mid-scan MJD.
+        if self.mjd is not None and 'high' in self.mjd and 'low' in self.mjd:
+            return (self.mjd['low'] + self.mjd['high']) / 2.
+        return 0
+    
+    def getAveragedSpectrum(self, options=None):
+        # We return the spectrum, suitably averaged, and split by band if asked.
+        if options is None:
+            options = {}
+        if 'splitBand' not in options:
+            options['splitBand'] = False
+        if 'spectralAveraging' not in options:
+            options['spectralAveraging'] = 1
+        # Grab the separated arrays from the Spectrum.
+        if self.spectrum is None:
+            return None
+        specArrays = self.spectrum.getSpectrumArrays()
+        # Figure out the frequency bins that we want.
+        halfBandwidth = 1024
+        freqBins = []
+        for i in xrange(0, len(self.centreFrequencies)):
+            lowFreq = self.centreFrequencies[i] - halfBandwidth
+            highFreq = self.centreFrequencies[i] + halfBandwidth
+            
     
 # TimeSeries class: this stores a series of spectra.
 class TimeSeries:
@@ -143,6 +194,33 @@ class Source:
                             self.timeSeries[stokes].storeFromObject(sourceObject, stokes)
         return None
 
+    def getSpectra(self, options=None):
+        # We return spectra in the way the user asks for, as controlled by the
+        # options object.
+        # By default, we return one spectrum at every time interval we know about.
+        if options is None:
+            options = {}
+        if 'splitTime' not in options:
+            options['splitTime'] = True
+        if 'splitBand' not in options:
+            options['splitBand'] = False
+        if 'spectralAveraging' not in options:
+            options['spectralAveraging'] = False
+        if 'stokes' not in options:
+            options['stokes'] = "I"
+        # Assemble the data.
+        data = {}
+        if options['splitTime'] == True:
+            data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'] }
+            if self.timeSeries[options['stokes']] is None:
+                # We haven't got any data here.
+                return data
+            measurements = self.timeSeries[options['stokes']].measurements
+            for i in xrange(0, len(measurements)):
+                data.mjd.append(measurements[i].getMeanMjd())
+            
+        return data
+    
 # The routine which reads in a JSON file.
 def readJson(fileName=None):
     if fileName is None:
