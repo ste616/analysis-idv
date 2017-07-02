@@ -128,18 +128,77 @@ class Measurement:
         if 'splitBand' not in options:
             options['splitBand'] = False
         if 'spectralAveraging' not in options:
-            options['spectralAveraging'] = 1
+            options['spectralAveraging'] = 1.0
+        if 'frequencyUnits' not in options:
+            options['frequencyUnits'] = "MHz"
         # Grab the separated arrays from the Spectrum.
         if self.spectrum is None:
             return None
         specArrays = self.spectrum.getSpectrumArrays()
         # Figure out the frequency bins that we want.
-        halfBandwidth = 1024
         freqBins = []
+        ampBins = []
+        nBins = []
         for i in xrange(0, len(self.centreFrequencies)):
-            lowFreq = self.centreFrequencies[i] - halfBandwidth
-            highFreq = self.centreFrequencies[i] + halfBandwidth
+            bins = []
+            amps = []
+            n = []
+            lowFreq = self.bandRanges[i][0] - self.channelWidth[i] / 2.
+            highFreq = self.bandRanges[i][1] + self.channelWidth[i] / 2.
+            chanFreq = options['spectralAveraging']
+            if chanFreq < self.channelWidth[i]:
+                # The channels are already wider than the averaging width.
+                chanFreq = self.channelWidth[i]
+            # What is the first channel centre frequency?
+            lowCf = lowFreq + ((chanFreq / self.channelWidth[i]) - 1) * self.channelWidth[i] / 2.
+            # And then we continue making channels until we run over the band edge.
+            bins.append(lowCf)
+            amps.append(0.)
+            n.append(0)
+            cf = lowCf
+            while True:
+                cf += chanFreq
+                if cf <= highFreq:
+                    bins.append(cf)
+                    amps.append(0.)
+                    n.append(0)
+                else:
+                    break
             
+            freqBins.append(bins)
+            ampBins.append(amps)
+            nBins.append(n)
+        # Now we go through and average the spectrum into those bins.
+        for i in xrange(0, len(self.centreFrequencies)):
+            for j in xrange(0, len(specArrays['freq'])):
+                for k in xrange(0, len(freqBins[i])):
+                    if (specArrays['freq'][j] >= (freqBins[i][k] - chanFreq / 2.) and
+                        specArrays['freq'][j] < (freqBins[i][k] + chanFreq / 2.)):
+                        # This falls in the bin.
+                        ampBins[i][k] += specArrays['amp'][j]
+                        nBins[i][k] += 1
+                        break
+        # Normalise the output spectra, leaving out any bad channels.
+        outSpectrum = { 'freq': [], 'amp': [] }
+        bandSpec = freqBins
+        bandAmp = ampBins
+        bandN = nBins
+        if options['splitBand'] == False:
+            bandSpec = [ sum(bandSpec, []) ]
+            bandAmp = [ sum(bandAmp, []) ]
+            bandN = [ sum(bandN, []) ]
+        for i in xrange(0, len(bandSpec)):
+            f = []
+            a = []
+            for j in xrange(0, len(bandSpec[i])):
+                if bandN[i][j] > 0:
+                    f.append(bandSpec[i][j])
+                    a.append(bandAmp[i][j] / float(bandN[i][j]))
+            if options['frequencyUnits'] == "GHz":
+                f = [ (b / 1000.) for b in f ]
+            outSpectrum['freq'].append(f)
+            outSpectrum['amp'].append(a)
+        return outSpectrum
     
 # TimeSeries class: this stores a series of spectra.
 class TimeSeries:
@@ -208,6 +267,8 @@ class Source:
             options['spectralAveraging'] = False
         if 'stokes' not in options:
             options['stokes'] = "I"
+        if 'frequencyUnits' not in options:
+            options['frequencyUnits'] = "MHz"
         # Assemble the data.
         data = {}
         if options['splitTime'] == True:
@@ -217,8 +278,9 @@ class Source:
                 return data
             measurements = self.timeSeries[options['stokes']].measurements
             for i in xrange(0, len(measurements)):
-                data.mjd.append(measurements[i].getMeanMjd())
-            
+                data['mjd'].append(measurements[i].getMeanMjd())
+                data['spectra'].append(measurements[i].getAveragedSpectrum(options))
+                
         return data
     
 # The routine which reads in a JSON file.
