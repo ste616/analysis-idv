@@ -194,7 +194,7 @@ class Measurement:
                 if bandN[i][j] > 0:
                     f.append(bandSpec[i][j])
                     a.append(bandAmp[i][j] / float(bandN[i][j]))
-            if options['frequencyUnits'] == "GHz":
+            if options['frequencyUnits'].lower() == "ghz":
                 f = [ (b / 1000.) for b in f ]
             outSpectrum['freq'].append(f)
             outSpectrum['amp'].append(a)
@@ -223,6 +223,7 @@ class TimeSeries:
                     self.arrayConfigurations.append(seriesObject['arrayConfiguration'])
                     self.measurements.append(Measurement(seriesObject['timeSeries'][i], stokes))
         return None
+
 
 # Source class: this stores information about a source, with time series of all
 # the types.
@@ -264,7 +265,7 @@ class Source:
         if 'splitBand' not in options:
             options['splitBand'] = False
         if 'spectralAveraging' not in options:
-            options['spectralAveraging'] = False
+            options['spectralAveraging'] = 1.0
         if 'stokes' not in options:
             options['stokes'] = "I"
         if 'frequencyUnits' not in options:
@@ -272,7 +273,8 @@ class Source:
         # Assemble the data.
         data = {}
         if options['splitTime'] == True:
-            data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'] }
+            data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'],
+                     'frequencyUnits': options['frequencyUnits'].lower() }
             if self.timeSeries[options['stokes']] is None:
                 # We haven't got any data here.
                 return data
@@ -282,7 +284,154 @@ class Source:
                 data['spectra'].append(measurements[i].getAveragedSpectrum(options))
                 
         return data
-    
+
+    def nearestFrequency(self, frequency=None, alwaysPresent=False, minimumPresent=1,
+                         frequencyUnits="MHz", stokes="I", spectralAveraging=1.0):
+        # We find the nearest frequency in the list of measurements we have to the
+        # frequency supplied, subject to the constraints that it has be in at least
+        # minimumPresent spectra, or it has to be in all spectra (if alwaysPresent is True).
+        # Work out the band the requested frequency is in.
+        fband = frequency2Band(frequency=frequency, units=frequencyUnits)
+        # We start by getting all the measurements.
+        measurements = self.timeSeries[stokes].measurements
+        # This is the object that stores the frequencies and how often they occur.
+        allFreqs = {}
+        nSpectra = 0
+        for i in xrange(0, len(measurements)):
+            spectrum = measurements[i].getAveragedSpectrum({
+                'spectralAveraging': spectralAveraging,
+                'frequencyUnits': frequencyUnits,
+                'splitBand': False
+                })
+            # Check that this spectrum is in the same band.
+            if len(spectrum['freq']) > 0:
+                sband = frequency2Band(frequency=spectrum['freq'][0][0], units=frequencyUnits)
+                if fband == sband:
+                    #print "same band found"
+                    #print spectrum['freq'][0]
+                    nSpectra += 1
+                    for j in xrange(0, len(spectrum['freq'][0])):
+                        if spectrum['freq'][0][j] in allFreqs:
+                            allFreqs[spectrum['freq'][0][j]]['n'] += 1
+                        else:
+                            allFreqs[spectrum['freq'][0][j]] = { 'frequency': spectrum['freq'][0][j],
+                                                              'n': 1 }
+        # Eliminate any non-compliant frequencies.
+        for f in allFreqs:
+            # Does it have enough values?
+            if allFreqs[f]['n'] < minimumPresent:
+                del allFreqs[f]
+                continue
+            # Are we looking for something that is always present?
+            if alwaysPresent == True and allFreqs[f]['n'] < nSpectra:
+                del allFreqs[f]
+                continue
+
+        # Now find the closest frequency.
+        closestF = 0
+        minDiff = 1000000
+        for f in allFreqs:
+            diff = abs(allFreqs[f]['frequency'] - frequency)
+            if diff < minDiff:
+                minDiff = diff
+                closestF = allFreqs[f]['frequency']
+
+        return closestF
+            
+    def getTimeSeries(self, options=None):
+        # We return time-series for the frequencies the user asks for, as controlled
+        # by the options object.
+        # There is no default frequency to return a time-series for, the user must
+        # supply at least one.
+        if options is None:
+            options = {}
+        if 'spectralAveraging' not in options:
+            options['spectralAveraging'] = 1.0
+        if 'stokes' not in options:
+            options['stokes'] = "I"
+        if 'timeUnits' not in options:
+            options['timeUnits'] = "mjd"
+            # Other options here are "DOY" and "datetime"
+        if 'frequencyUnits' not in options:
+            options['frequencyUnits'] = "MHz"
+        if 'frequencies' not in options:
+            options['frequencies'] = []
+        if 'exactFrequency' not in options:
+            options['exactFrequency'] = False
+        if 'alwaysPresent' not in options:
+            options['alwaysPresent'] = True
+        # Assemble the data.
+        data = { 'times': [], 'timeFormat': options['timeUnits'].lower(),
+                 'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [] }
+        if self.timeSeries[options['stokes']] is None:
+            # We haven't got any data here.
+            return data
+        measurements = self.timeSeries[options['stokes']].measurements
+        # Grab all the data.
+        mjdArray = []
+        spectraArray = []
+        for i in xrange(0, len(measurements)):
+            mjdArray.append(measurements[i].getMeanMjd())
+            spectraArray.append(measurements[i].getAveragedSpectrum(options))
+        # Find the nearest frequency for each specified frequency.
+        nearFrequencies = []
+        for i in xrange(0, len(options['frequencies'])):
+            print "searching for frequency %s %s" % (str(options['frequencies'][i]),
+                                                     options['frequencyUnits'])
+            near = self.nearestFrequency(frequency=options['frequencies'][i],
+                                         alwaysPresent=options['alwaysPresent'],
+                                         frequencyUnits=options['frequencyUnits'],
+                                         stokes=options['stokes'],
+                                         spectralAveraging=options['spectralAveraging'])
+            if near is not None and near > 0:
+                print "found nearest frequency %f" % near
+                # We have found a near frequency.
+                if options['exactFrequency'] == True and near != options['frequencies'][i]:
+                    # Not usable.
+                    continue
+                # This is a good frequency.
+                nearFrequencies.append(near)
+        # Form the time series for the frequencies we found.
+        for i in xrange(0, len(nearFrequencies)):
+            print "assembling time series for frequency %f %s" % (nearFrequencies[i],
+                                                                  options['frequencyUnits'])
+            fds = []
+            tms = []
+            for j in xrange(0, len(spectraArray)):
+                #print spectraArray[j]['freq']
+                freqs = np.array(spectraArray[j]['freq'][0])
+                k = np.where(freqs == nearFrequencies[i])
+                print "spectrum %d" % j
+                print k
+                if len(k[0]) > 0:
+                    tms.append(mjdArray[j])
+                    fds.append(spectraArray[j]['amp'][0][k[0][0]])
+            if len(fds) > 0:
+                data['times'].append(tms)
+                data['fluxDensities'].append(fds)
+                data['frequencies'].append(nearFrequencies[i])
+        return data
+        
+# Return the band that the specified frequency is in.
+def frequency2Band(frequency=None, units="MHz"):
+    if frequency is None:
+        return None
+    print frequency
+    fmhz = float(frequency)
+    if units.lower() == "ghz":
+        fmhz = float(frequency) * 1000.
+    if fmhz < 3400:
+        return "16cm"
+    if fmhz < 12000:
+        return "4cm"
+    if fmhz < 28000:
+        return "15mm"
+    if fmhz < 60000:
+        return "7mm"
+    if fmhz < 110000:
+        return "3mm"
+    return None
+                    
 # The routine which reads in a JSON file.
 def readJson(fileName=None):
     if fileName is None:

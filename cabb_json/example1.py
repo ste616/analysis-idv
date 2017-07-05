@@ -19,4 +19,15 @@ for i in xrange(0, len(allSpectra['spectra'])):
     for j in xrange(0, len(s['freq'])):
         plt.plot(s['freq'][j], s['amp'][j])
 plt.savefig('test.png')
+plt.close()
+
+# Get a time series at two frequencies.
+timeSeries = source.getTimeSeries({ 'spectralAveraging': 16.0, 'frequencyUnits': "GHz",
+                                    'frequencies': [ 4.8, 8.4 ], 'alwaysPresent': False })
+print timeSeries
+for i in xrange(0, len(timeSeries['frequencies'])):
+    plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label="%.3f GHz" % timeSeries['frequencies'][i])
+plt.legend()
+plt.savefig('test_ts.png')
+plt.close()
 
