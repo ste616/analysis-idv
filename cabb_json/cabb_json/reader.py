@@ -274,7 +274,8 @@ class Source:
         data = {}
         if options['splitTime'] == True:
             data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'],
-                     'frequencyUnits': options['frequencyUnits'].lower() }
+                     'frequencyUnits': options['frequencyUnits'].lower(),
+                     'frequencyResolution': options['spectralAveraging'] }
             if self.timeSeries[options['stokes']] is None:
                 # We haven't got any data here.
                 return data
@@ -307,8 +308,6 @@ class Source:
             if len(spectrum['freq']) > 0:
                 sband = frequency2Band(frequency=spectrum['freq'][0][0], units=frequencyUnits)
                 if fband == sband:
-                    #print "same band found"
-                    #print spectrum['freq'][0]
                     nSpectra += 1
                     for j in xrange(0, len(spectrum['freq'][0])):
                         if spectrum['freq'][0][j] in allFreqs:
@@ -376,15 +375,12 @@ class Source:
         # Find the nearest frequency for each specified frequency.
         nearFrequencies = []
         for i in xrange(0, len(options['frequencies'])):
-            print "searching for frequency %s %s" % (str(options['frequencies'][i]),
-                                                     options['frequencyUnits'])
             near = self.nearestFrequency(frequency=options['frequencies'][i],
                                          alwaysPresent=options['alwaysPresent'],
                                          frequencyUnits=options['frequencyUnits'],
                                          stokes=options['stokes'],
                                          spectralAveraging=options['spectralAveraging'])
             if near is not None and near > 0:
-                print "found nearest frequency %f" % near
                 # We have found a near frequency.
                 if options['exactFrequency'] == True and near != options['frequencies'][i]:
                     # Not usable.
@@ -393,16 +389,11 @@ class Source:
                 nearFrequencies.append(near)
         # Form the time series for the frequencies we found.
         for i in xrange(0, len(nearFrequencies)):
-            print "assembling time series for frequency %f %s" % (nearFrequencies[i],
-                                                                  options['frequencyUnits'])
             fds = []
             tms = []
             for j in xrange(0, len(spectraArray)):
-                #print spectraArray[j]['freq']
                 freqs = np.array(spectraArray[j]['freq'][0])
                 k = np.where(freqs == nearFrequencies[i])
-                print "spectrum %d" % j
-                print k
                 if len(k[0]) > 0:
                     tms.append(mjdArray[j])
                     fds.append(spectraArray[j]['amp'][0][k[0][0]])
@@ -416,7 +407,6 @@ class Source:
 def frequency2Band(frequency=None, units="MHz"):
     if frequency is None:
         return None
-    print frequency
     fmhz = float(frequency)
     if units.lower() == "ghz":
         fmhz = float(frequency) * 1000.
