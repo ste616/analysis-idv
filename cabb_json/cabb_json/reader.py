@@ -146,6 +146,8 @@ class Measurement:
             lowFreq = self.bandRanges[i][0] - self.channelWidth[i] / 2.
             highFreq = self.bandRanges[i][1] + self.channelWidth[i] / 2.
             chanFreq = options['spectralAveraging']
+            if options['frequencyUnits'].lower() == "GHz":
+                chanFreq = options['spectralAveraging'] * 1000.
             if chanFreq < self.channelWidth[i]:
                 # The channels are already wider than the averaging width.
                 chanFreq = self.channelWidth[i]
@@ -179,7 +181,8 @@ class Measurement:
                         nBins[i][k] += 1
                         break
         # Normalise the output spectra, leaving out any bad channels.
-        outSpectrum = { 'freq': [], 'amp': [] }
+        outSpectrum = { 'freq': [], 'amp': [], 'frequencyUnits': options['frequencyUnits'].lower(),
+                        'frequencyResolution': chanFreq }
         bandSpec = freqBins
         bandAmp = ampBins
         bandN = nBins
@@ -282,8 +285,9 @@ class Source:
             measurements = self.timeSeries[options['stokes']].measurements
             for i in xrange(0, len(measurements)):
                 data['mjd'].append(measurements[i].getMeanMjd())
-                data['spectra'].append(measurements[i].getAveragedSpectrum(options))
-                
+                d = measurements[i].getAveragedSpectrum(options)
+                data['spectra'].append(d)
+                data['frequencyResolution'] = d['frequencyResolution']
         return data
 
     def nearestFrequency(self, frequency=None, alwaysPresent=False, minimumPresent=1,

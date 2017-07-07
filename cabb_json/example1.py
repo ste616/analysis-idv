@@ -12,7 +12,7 @@ for i in xrange(0, len(source.timeSeries['I'].measurements)):
     a = source.timeSeries['I'].measurements[i]
 
 # Get all the spectra, averaged to 4 MHz resolution.
-allSpectra = source.getSpectra({ 'splitBand': True, 'spectralAveraging': 1.0,
+allSpectra = source.getSpectra({ 'splitBand': True, 'spectralAveraging': 0.016,
                                  'frequencyUnits': "GHz" })
 for i in xrange(0, len(allSpectra['spectra'])):
     s = allSpectra['spectra'][i]
@@ -30,4 +30,4 @@ plt.legend()
 plt.savefig('test_ts.png')
 plt.close()
 
-ihv.spectraPlot(allSpectra, frequencyResolution=0.001)
+ihv.spectraPlot(allSpectra)

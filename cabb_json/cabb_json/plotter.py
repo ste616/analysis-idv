@@ -9,6 +9,7 @@
 # Our necessary imports.
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.mlab import griddata
 
 # Plot a set of spectra from a getSpecta method, in some ways.
 def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None,
@@ -46,13 +47,35 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         
     if plotType == "dynamic":
         # We are making a dynamic spectrum.
+        ## Assemble all the points into three areas, mjd, freq and amp.
+        #mjd = []
+        #freq = []
+        #amp = []
+
+        #for i in xrange(0, len(spectra['spectra'])):
+        #    for j in xrange(0, len(spectra['spectra'][i]['freq'])):
+        #        for k in xrange(0, len(spectra['spectra'][i]['freq'][j])):
+        #            mjd.append(spectra['mjd'][i])
+        #            freq.append(spectra['spectra'][i]['freq'][j][k])
+        #            amp.append(spectra['spectra'][i]['amp'][j][k])
+        ## Now mesh the frequency and mjd into a grid.
+        #mjdMesh, freqMesh = np.meshgrid(mjd, freq)
+        ## And grid the amps onto this grid.
+        #ampMesh = griddata(freq, mjd, amp, freqMesh, mjdMesh, interp='nn')
+        ## And plot.
+        #plt.pcolor(ampMesh)
+        #plt.colorbar()
+        #plt.savefig("test_grid.png")
+        #plt.close()
+        
         # We first form a regular grid.
+        # The frequency grid has 1 MHz increments.
         freqGrid = [ minFreq ]
         ff = minFreq
         while ff <= maxFreq:
-            ff += frequencyResolution
+            ff += 1.
             freqGrid.append(ff)
-        print freqGrid
+        #print freqGrid
         timeGrid = [ minTime ]
         tt = minTime
         while tt <= maxTime:
@@ -62,22 +85,22 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         imageData = []
         for i in xrange(0, len(freqGrid)):
             # Accumulate all the data for this frequency.
-            print "frequency %.3f" % freqGrid[i]
+            #print "frequency %.3f" % freqGrid[i]
             ftimes = []
             famps = []
             for j in xrange(0, len(spectra['spectra'])):
-                print " searching spectra %d" % j
+                #print " searching spectra %d" % j
                 for k in xrange(0, len(spectra['spectra'][j]['freq'])):
-                    print "  searching frequency spectrum %d" % k
+                    #print "  searching frequency spectrum %d" % k
                     idx = -1
-                    print " min max %.3f %.3f" % (min(spectra['spectra'][j]['freq'][k]),
-                                                  max(spectra['spectra'][j]['freq'][k]))
-                    if (freqGrid[i] >= min(spectra['spectra'][j]['freq'][k]) and
-                        freqGrid[i] <= max(spectra['spectra'][j]['freq'][k])):
+                    #print " min max %.3f %.3f" % (min(spectra['spectra'][j]['freq'][k]),
+                    #                              max(spectra['spectra'][j]['freq'][k]))
+                    if (freqGrid[i] >= min(spectra['spectra'][j]['freq'][k]) - frequencyResolution and
+                        freqGrid[i] <= max(spectra['spectra'][j]['freq'][k]) + frequencyResolution):
                         # There is a chance we'll find this frequency.
                         print "   continuing search"
                         for l in xrange(0, len(spectra['spectra'][j]['freq'][k])):
-                            if (abs(freqGrid[i] - spectra['spectra'][j]['freq'][k][l]) < 0.001):
+                            if (abs(freqGrid[i] - spectra['spectra'][j]['freq'][k][l]) < (frequencyResolution / 2.)):
                                 idx = l
                                 break
                     if idx > -1:
@@ -97,9 +120,9 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         print len(timeGrid)
         print len(imageData)
         print len(imageData[0])
-        plt.imshow(imageData, extent=(minTime, maxTime, minFreq, maxFreq), origin='lower', aspect='auto',
-                   vmin=minAmp, vmax=maxAmp)
+        #plt.imshow(imageData, extent=(minTime, maxTime, minFreq, maxFreq), origin='lower', aspect='auto',
+        #           vmin=minAmp, vmax=maxAmp)
+        plt.pcolormesh(timeGrid, freqGrid, imageData, vmin=minAmp, vmax=maxAmp)
         plt.colorbar()
         plt.savefig("test_grid.png")
         plt.close()
-        
