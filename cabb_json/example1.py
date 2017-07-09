@@ -22,8 +22,8 @@ plt.savefig('test.png')
 plt.close()
 
 # Get a time series at two frequencies.
-timeSeries = source.getTimeSeries({ 'spectralAveraging': 16.0, 'frequencyUnits': "GHz",
-                                    'frequencies': [ 4.8, 8.4 ], 'alwaysPresent': False })
+timeSeries = source.getTimeSeries({ 'spectralAveraging': 16, 'frequencyUnits': "MHz",
+                                    'frequencies': [ 4800, 8400 ], 'alwaysPresent': False })
 for i in xrange(0, len(timeSeries['frequencies'])):
     plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label="%.3f GHz" % timeSeries['frequencies'][i])
 plt.legend()

@@ -28,6 +28,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             maxFreqs.append(max(spectra['spectra'][i]['freq'][j]))
     minFreq = min(minFreqs)
     maxFreq = max(maxFreqs)
+    print "minimum / maximum frequencies %.3f / %.3f" % (minFreq, maxFreq)
     # Minimum and maximum available flux densities.
     minAmps = []
     maxAmps = []
@@ -41,6 +42,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
     # Choose some sensible defaults.
     if frequencyResolution is None and 'frequencyResolution' in spectra:
         frequencyResolution = spectra['frequencyResolution']
+        print "found frequency resolution of %.3f" % frequencyResolution
     if timeResolution is None:
         # We default to 2 minutes.
         timeResolution = 2. / 1440.
@@ -73,7 +75,10 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         freqGrid = [ minFreq ]
         ff = minFreq
         while ff <= maxFreq:
-            ff += 1.
+            if 'frequencyUnits' in spectra and spectra['frequencyUnits'].lower() == "ghz":
+                ff += 0.001
+            else:
+                ff += 1.
             freqGrid.append(ff)
         #print freqGrid
         timeGrid = [ minTime ]
@@ -111,15 +116,17 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             print ftimes
             print famps
             if len(ftimes) > 0:
-                finter = np.interp(timeGrid, ftimes, famps, left=0., right=0.)
+                finter = np.interp(timeGrid, ftimes, famps, left=float('nan'), right=float('nan'))
             else:
-                finter = [ 0. for x in timeGrid ]
+                finter = [ float('nan') for x in timeGrid ]
             imageData.append(finter)
         #print imageData
         print len(freqGrid)
         print len(timeGrid)
         print len(imageData)
         print len(imageData[0])
+        print "image data follows"
+        print imageData
         #plt.imshow(imageData, extent=(minTime, maxTime, minFreq, maxFreq), origin='lower', aspect='auto',
         #           vmin=minAmp, vmax=maxAmp)
         plt.pcolormesh(timeGrid, freqGrid, imageData, vmin=minAmp, vmax=maxAmp)

@@ -146,7 +146,7 @@ class Measurement:
             lowFreq = self.bandRanges[i][0] - self.channelWidth[i] / 2.
             highFreq = self.bandRanges[i][1] + self.channelWidth[i] / 2.
             chanFreq = options['spectralAveraging']
-            if options['frequencyUnits'].lower() == "GHz":
+            if options['frequencyUnits'].lower() == "ghz":
                 chanFreq = options['spectralAveraging'] * 1000.
             if chanFreq < self.channelWidth[i]:
                 # The channels are already wider than the averaging width.
@@ -181,8 +181,11 @@ class Measurement:
                         nBins[i][k] += 1
                         break
         # Normalise the output spectra, leaving out any bad channels.
+        avgChan = chanFreq
+        if options['frequencyUnits'].lower() == "ghz":
+            avgChan = chanFreq / 1000.
         outSpectrum = { 'freq': [], 'amp': [], 'frequencyUnits': options['frequencyUnits'].lower(),
-                        'frequencyResolution': chanFreq }
+                        'frequencyResolution': avgChan }
         bandSpec = freqBins
         bandAmp = ampBins
         bandN = nBins
