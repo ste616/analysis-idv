@@ -15,7 +15,7 @@ from matplotlib.mlab import griddata
 def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None,
                 ampRange=None, includeZero=False, frequencyResolution=None,
                 timeResolution=None, outputName='test_spectraPlot.png',
-                colourMap='gist_ncar'):
+                colourMap='gist_ncar', animationMax=5):
     # Work out some ranges for the data.
     # Minimum and maximum available times.
     minTime = min(spectra['mjd'])
@@ -38,6 +38,8 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             maxAmps.append(max(spectra['spectra'][i]['amp'][j]))
     minAmp = min(minAmps)
     maxAmp = max(maxAmps)
+    if includeZero == True:
+        minAmp = 0.
 
     # Choose some sensible defaults.
     if frequencyResolution is None and 'frequencyResolution' in spectra:
@@ -92,5 +94,35 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         maskedImageData = np.ma.masked_where(np.isnan(imageData), imageData)
         plt.pcolormesh(timeGrid, freqGrid, maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
         plt.colorbar()
+        plt.xlabel('MJD')
+        plt.ylabel('Frequency [%s]' % spectra['frequencyUnits'])
         plt.savefig(outputName)
         plt.close()
+    elif plotType == "animation":
+        # We will plot the time evolution of the spectra as a series of images,
+        # where each plot has the latest spectrum is coloured, and the previous are
+        # coloured as lighter shades of grey.
+
+        # Go through each of the measurements in the time series.
+        for i in xrange(0, len(spectra['spectra'])):
+            # Plot only the most recent N spectra, and no more than animationMax.
+            startIndex = i - animationMax
+            if startIndex < 0:
+                startIndex = 0
+            minLinewidth = 1.0
+            maxLinewidth = 3.0
+            incrLinewidth = (maxLinewidth - minLinewidth) / float(animationMax)
+            for j in xrange(startIndex, i + 1):
+                lw = maxLinewidth - float(i - j) * incrLinewidth
+                for k in xrange(0, len(spectra['spectra'][j]['freq'])):
+                    colour = 'red'
+                    if j != i:
+                        colour = 'grey'
+                    plt.plot(spectra['spectra'][j]['freq'][k], spectra['spectra'][j]['amp'][k], '-',
+                             color=colour, lw=lw)
+            plt.ylim((minAmp, maxAmp))
+            plt.xlim((minFreq, maxFreq))
+            plt.xlabel('Frequency [%s]' % spectra['frequencyUnits'])
+            plt.ylabel('Flux Density [Jy]')
+            plt.savefig(outputName % i)
+            plt.close()

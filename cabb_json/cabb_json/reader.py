@@ -9,6 +9,7 @@
 # Our necessary imports.
 import json
 import numpy as np
+from operator import attrgetter
 
 # Spectrum class: this stores a single spectrum.
 class Spectrum:
@@ -184,7 +185,7 @@ class Measurement:
         avgChan = chanFreq
         if options['frequencyUnits'].lower() == "ghz":
             avgChan = chanFreq / 1000.
-        outSpectrum = { 'freq': [], 'amp': [], 'frequencyUnits': options['frequencyUnits'].lower(),
+        outSpectrum = { 'freq': [], 'amp': [], 'frequencyUnits': options['frequencyUnits'],
                         'frequencyResolution': avgChan }
         bandSpec = freqBins
         bandAmp = ampBins
@@ -230,6 +231,10 @@ class TimeSeries:
                     self.measurements.append(Measurement(seriesObject['timeSeries'][i], stokes))
         return None
 
+    def sort(self, reverse=False):
+        # We sort our spectra into ascending, or descending time order.
+        # For the moment we don't need this, but we keep this here for later, just in case.
+        return None
 
 # Source class: this stores information about a source, with time series of all
 # the types.
@@ -280,7 +285,7 @@ class Source:
         data = {}
         if options['splitTime'] == True:
             data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'],
-                     'frequencyUnits': options['frequencyUnits'].lower(),
+                     'frequencyUnits': options['frequencyUnits'],
                      'frequencyResolution': options['spectralAveraging'] }
             if self.timeSeries[options['stokes']] is None:
                 # We haven't got any data here.
@@ -367,7 +372,7 @@ class Source:
         if 'alwaysPresent' not in options:
             options['alwaysPresent'] = True
         # Assemble the data.
-        data = { 'times': [], 'timeFormat': options['timeUnits'].lower(),
+        data = { 'times': [], 'timeFormat': options['timeUnits'],
                  'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [] }
         if self.timeSeries[options['stokes']] is None:
             # We haven't got any data here.
