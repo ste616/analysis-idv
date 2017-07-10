@@ -30,4 +30,4 @@ plt.legend()
 plt.savefig('test_ts.png')
 plt.close()
 
-ihv.spectraPlot(allSpectra)
+ihv.spectraPlot(allSpectra, outputName='test_gistncar.png')
