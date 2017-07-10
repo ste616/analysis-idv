@@ -104,6 +104,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         # coloured as lighter shades of grey.
 
         # Go through each of the measurements in the time series.
+        recentColour = 'red'
         for i in xrange(0, len(spectra['spectra'])):
             # Plot only the most recent N spectra, and no more than animationMax.
             startIndex = i - animationMax
@@ -115,7 +116,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             for j in xrange(startIndex, i + 1):
                 lw = maxLinewidth - float(i - j) * incrLinewidth
                 for k in xrange(0, len(spectra['spectra'][j]['freq'])):
-                    colour = 'red'
+                    colour = recentColour
                     if j != i:
                         colour = 'grey'
                     plt.plot(spectra['spectra'][j]['freq'][k], spectra['spectra'][j]['amp'][k], '-',
@@ -124,5 +125,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.xlim((minFreq, maxFreq))
             plt.xlabel('Frequency [%s]' % spectra['frequencyUnits'])
             plt.ylabel('Flux Density [Jy]')
+            timeLabel = "MJD = %.4f" % spectra['mjd'][i]
+            plt.text(minFreq, maxAmp + ((maxAmp - minAmp) / 40.), timeLabel, color=recentColour)
             plt.savefig(outputName % i)
             plt.close()
