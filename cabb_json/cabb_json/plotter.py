@@ -10,6 +10,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.mlab import griddata
+import datetime
+from astropy.time import Time
 
 # Plot a set of spectra from a getSpecta method, in some ways.
 def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None,
@@ -17,9 +19,24 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
                 timeResolution=None, outputName='test_spectraPlot.png',
                 colourMap='gist_ncar', animationMax=5):
     # Work out some ranges for the data.
+    minTime = 0.
+    maxTime = 0.
     # Minimum and maximum available times.
-    minTime = min(spectra['mjd'])
-    maxTime = max(spectra['mjd'])
+    if (spectra['timeUnits'].lower() == "mjd" or spectra['timeUnits'].lower() == "astro" or
+        spectra['timeUnits'].lower() == "datetime"):
+        minTime = min(spectra['time'])
+        maxTime = max(spectra['time'])
+    elif spectra['timeUnits'].lower() == "doy":
+        minTime = spectra['time'][0]
+        maxTime = spectra['time'][0]
+        for i in xrange(0, len(spectra['time'])):
+            cmin = minTime['year'] + minTime['doy'] / 365.
+            cmax = maxTime['year'] + maxTime['doy'] / 365.
+            t = spectra['time'][i]['year'] + spectra['time'][i]['doy'] / 365.
+            if t < cmin:
+                cmin = spectra['time'][i]
+            if t > cmax:
+                cmax = spectra['time'][i]
     # Minimum and maximum available frequencies.
     minFreqs = []
     maxFreqs = []
@@ -46,10 +63,17 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         frequencyResolution = spectra['frequencyResolution']
     if timeResolution is None:
         # We default to 2 minutes.
-        timeResolution = 2. / 1440.
+        if spectra['timeUnits'].lower() == "mjd":
+            timeResolution = 2. / 1440.
+        elif spectra['timeUnits'].lower() == "datetime":
+            timeResolution = datetime.timedelta(minutes=2)
         
     if plotType == "dynamic":
         # We are making a dynamic spectrum.
+        # We only support one type of time labelling.
+        if spectra['timeUnits'].lower() != 'mjd':
+            print "Dynamic spectrum plotter supports only MJD labelling."
+            return
         # We first form a regular grid.
         # The frequency grid has 1 MHz increments.
         freqGrid = [ minFreq ]
@@ -83,7 +107,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
                                 idx = l
                                 break
                     if idx > -1:
-                        ftimes.append(spectra['mjd'][j])
+                        ftimes.append(spectra['time'][j].value)
                         famps.append(spectra['spectra'][j]['amp'][k][idx])
             if len(ftimes) > 0:
                 finter = np.interp(timeGrid, ftimes, famps, left=float('nan'), right=float('nan'))
@@ -94,7 +118,11 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         maskedImageData = np.ma.masked_where(np.isnan(imageData), imageData)
         plt.pcolormesh(timeGrid, freqGrid, maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
         plt.colorbar()
-        plt.xlabel('MJD')
+        if spectra['timeUnits'].lower() == "mjd":
+            plt.xlabel('MJD')
+        elif spectra['timeUnits'].lower() == "datetime":
+            plt.xlabel('Date')
+            plt.gcf().autofmt_xdate()
         plt.ylabel('Frequency [%s]' % spectra['frequencyUnits'])
         plt.savefig(outputName)
         plt.close()
@@ -102,7 +130,11 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
         # We will plot the time evolution of the spectra as a series of images,
         # where each plot has the latest spectrum is coloured, and the previous are
         # coloured as lighter shades of grey.
-
+        # We support three types of time labelling.
+        if (spectra['timeUnits'].lower() != "mjd" and spectra['timeUnits'].lower() != "datetime" and
+            spectra['timeUnits'].lower() != "doy"):
+            print "Animation plotter supports MJD, DateTime and DOY plotting only."
+            return
         # Go through each of the measurements in the time series.
         recentColour = 'red'
         for i in xrange(0, len(spectra['spectra'])):
@@ -125,7 +157,73 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.xlim((minFreq, maxFreq))
             plt.xlabel('Frequency [%s]' % spectra['frequencyUnits'])
             plt.ylabel('Flux Density [Jy]')
-            timeLabel = "MJD = %.4f" % spectra['mjd'][i]
+            timeLabel = ""
+            if spectra['timeUnits'].lower() == "mjd":
+                timeLabel = "MJD = %.4f" % spectra['time'][i]
+            elif spectra['timeUnits'].lower() == "datetime":
+                timeLabel = "Date = %s" % spectra['time'][i].strftime("%Y-%m-%d %H:%M:%S")
+            elif spectra['timeUnits'].lower() == "doy":
+                timeLabel = "DOY = %d / %.4f" % (spectra['time'][i]['year'], spectra['time'][i]['doy'])
             plt.text(minFreq, maxAmp + ((maxAmp - minAmp) / 40.), timeLabel, color=recentColour)
             plt.savefig(outputName % i)
             plt.close()
+
+# A routine to plot up time series.
+def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False,
+                   outputName='test_timeSeriesPlot.png'):
+
+    # Get some details about the data.
+    # Minimum and maximum available times.
+    minTime = 0.
+    maxTime = 0.
+    if timeSeries['timeUnits'].lower() == "doy":
+        # The minimum and maximum are set by the number of days in a year!
+        minTime = 0.
+        maxTime = 366.
+    else:
+        minTime = min(timeSeries['times'][0])
+        maxTime = max(timeSeries['times'][0])
+        for i in xrange(1, len(timeSeries['times'])):
+            tmin = min(timeSeries['times'][i])
+            tmax = max(timeSeries['times'][i])
+            if tmin < minTime:
+                minTime = tmin
+            if tmax > maxTime:
+                maxTime = tmax
+    # Minimum and maximum flux densities.
+    minFlux = min(timeSeries['fluxDensities'][0])
+    maxFlux = max(timeSeries['fluxDensities'][0])
+    for i in xrange(1, len(timeSeries['fluxDensities'])):
+        fmin = min(timeSeries['fluxDensities'][i])
+        fmax = max(timeSeries['fluxDensities'][i])
+        if fmin < minFlux:
+            minFlux = fmin
+        if fmax > maxFlux:
+            maxFlux = fmax
+    if includeZero == True:
+        minFlux = 0.
+    # Make the plot.
+    for i in xrange(0, len(timeSeries['frequencies'])):
+        sLabel = ""
+        if timeSeries['frequencyUnits'].lower() == "mhz":
+            sLabel = "%d MHz" % int(timeSeries['frequencies'][i])
+        elif timeSeries['frequencyUnits'].lower() == "ghz":
+            sLabel = "%.3f GHz" % timeSeries['frequencies'][i]
+        plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label=sLabel)
+    plt.legend()
+    plt.ylabel("Flux Density (Jy)")
+    if timeSeries['timeUnits'].lower() == "doy":
+        plt.xlabel("DOY")
+    elif timeSeries['timeUnits'].lower() == "mjd":
+        plt.xlabel("MJD")
+    elif timeSeries['timeUnits'].lower() == "datetime":
+        plt.gcf().autofmt_xdate()
+        plt.xlabel("Time")
+    print "minTime / maxTime"
+    print minTime
+    print maxTime
+    plt.xlim((minTime, maxTime))
+    plt.ylim((minFlux, maxFlux))
+    plt.savefig(outputName)
+    plt.close()
+    

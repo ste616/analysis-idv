@@ -10,6 +10,7 @@
 import json
 import numpy as np
 from operator import attrgetter
+from astropy.time import Time
 
 # Spectrum class: this stores a single spectrum.
 class Spectrum:
@@ -63,7 +64,11 @@ class Measurement:
         self.defect = None
         # 5. The time quantities, including MJD and hour angles.
         self.mjd = None
+        self.astroTime = None
+        self.dayOfYear = None
+        self.selectedTime = None
         self.hourAngle = None
+        self.timeRequest = "mjd"
         # 6. The channel width for each band, and the band frequency ranges.
         self.channelWidth = []
         self.bandRanges = []
@@ -91,7 +96,20 @@ class Measurement:
                     if measureObject['defect'][i]['stokes'] == self.stokes:
                         self.defect = measureObject['defect'][i]
                 self.mjd = measureObject['mjdRange']
+                # Calculate the middle for this as well.
+                if self.mjd is not None and 'high' in self.mjd and 'low' in self.mjd:
+                    self.mjd['mid'] = (self.mjd['low'] + self.mjd['high']) / 2.
+                    # Convert this time into different formats now.
+                    self.astroTime = { 'low': Time(self.mjd['low'], format='mjd'),
+                                       'high': Time(self.mjd['high'], format='mjd'),
+                                       'mid': Time(self.mjd['mid'], format='mjd') }
+                    self.dayOfYear = { 'low': astro2doy(self.astroTime['low']),
+                                       'high': astro2doy(self.astroTime['high']),
+                                       'mid': astro2doy(self.astroTime['mid']) }
                 self.hourAngle = measureObject['hourAngleRange']
+                if self.hourAngle is not None and 'high' in self.hourAngle and 'low' in self.hourAngle:
+                    self.hourAngle['mid'] = (self.hourAngle['low'] + self.hourAngle['high']) / 2.
+                self.selectedTime = self.setTimeType(self.timeRequest)
                 # Now find the right spectrum and add it.
                 for i in xrange(0, len(measureObject['fluxDensityData'])):
                     if measureObject['fluxDensityData'][i]['stokes'] == self.stokes:
@@ -121,6 +139,29 @@ class Measurement:
         if self.mjd is not None and 'high' in self.mjd and 'low' in self.mjd:
             return (self.mjd['low'] + self.mjd['high']) / 2.
         return 0
+
+    def getMeanTime(self):
+        # Return the mid-scan time, whatever that time is.
+        if self.selectedTime is not None:
+            if self.timeRequest == "datetime":
+                return self.selectedTime['mid'].datetime
+            return self.selectedTime['mid']
+        return None
+
+    def setTimeType(self, timeType=None):
+        if timeType is not None and (timeType.lower() == "mjd" or
+                                     timeType.lower() == "astro" or
+                                     timeType.lower() == "datetime" or
+                                     timeType.lower() == "doy"):
+            if timeType.lower() == "mjd":
+                self.selectedTime = self.mjd
+            elif timeType.lower() == "astro" or timeType.lower() == "datetime":
+                self.selectedTime = self.astroTime
+            elif timeType.lower() == "doy":
+                self.selectedTime = self.dayOfYear
+            self.timeRequest = timeType.lower()
+            return self.timeRequest
+        return None
     
     def getAveragedSpectrum(self, options=None):
         # We return the spectrum, suitably averaged, and split by band if asked.
@@ -281,10 +322,12 @@ class Source:
             options['stokes'] = "I"
         if 'frequencyUnits' not in options:
             options['frequencyUnits'] = "MHz"
+        if 'timeUnits' not in options:
+            options['timeUnits'] = "mjd"
         # Assemble the data.
         data = {}
         if options['splitTime'] == True:
-            data = { 'mjd': [], 'spectra': [], 'stokes': options['stokes'],
+            data = { 'time': [], 'spectra': [], 'stokes': options['stokes'],
                      'frequencyUnits': options['frequencyUnits'],
                      'frequencyResolution': options['spectralAveraging'] }
             if self.timeSeries[options['stokes']] is None:
@@ -292,7 +335,9 @@ class Source:
                 return data
             measurements = self.timeSeries[options['stokes']].measurements
             for i in xrange(0, len(measurements)):
-                data['mjd'].append(measurements[i].getMeanMjd())
+                measurements[i].setTimeType(options['timeUnits'])
+                data['time'].append(measurements[i].getMeanTime())
+                data['timeUnits'] = options['timeUnits']
                 d = measurements[i].getAveragedSpectrum(options)
                 data['spectra'].append(d)
                 data['frequencyResolution'] = d['frequencyResolution']
@@ -372,8 +417,9 @@ class Source:
         if 'alwaysPresent' not in options:
             options['alwaysPresent'] = True
         # Assemble the data.
-        data = { 'times': [], 'timeFormat': options['timeUnits'],
-                 'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [] }
+        data = { 'times': [], 'timeUnits': options['timeUnits'],
+                 'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [],
+                 'frequencyUnits': options['frequencyUnits'] }
         if self.timeSeries[options['stokes']] is None:
             # We haven't got any data here.
             return data
@@ -382,7 +428,8 @@ class Source:
         mjdArray = []
         spectraArray = []
         for i in xrange(0, len(measurements)):
-            mjdArray.append(measurements[i].getMeanMjd())
+            measurements[i].setTimeType(options['timeUnits'])
+            mjdArray.append(measurements[i].getMeanTime())
             spectraArray.append(measurements[i].getAveragedSpectrum(options))
         # Find the nearest frequency for each specified frequency.
         nearFrequencies = []
@@ -448,3 +495,10 @@ def readJson(fileName=None):
         # This is likely an IHV file.
         return Source(fileContents)
         
+# Convert a time in astropy time format to year, day of year + fractional UTC.
+def astro2doy(atime=None):
+    if atime is not None:
+        t = atime.datetime.timetuple()
+        return { 'year': t.tm_year,
+                 'doy': t.tm_yday + (t.tm_hour + t.tm_min / 60. + t.tm_sec / 3600.) / 24. }
+    return None
