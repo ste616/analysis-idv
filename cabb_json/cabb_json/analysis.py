@@ -53,8 +53,115 @@ def calculateACF(timeSeries, mode="fwhm", tfitmin=0.1, tfitmax=0.8):
         retVal['lag'].append(lag)
         retVal['frequencies'].append(timeSeries['frequencies'][i])
     return retVal
-        
 
+class TimeLagPair:
+    def __init__(self, aTime, aAmp, aIndex, bTime, bAmp, bIndex, timeUnits='minutes'):
+        # The time should be supplied in MJD.
+        self.times = [ aTime, bTime ]
+        self.amps = [ aAmp, bAmp ]
+        self.indices = [ aIndex, bIndex ]
+        # We will calculate the time in the time unit.
+        self.timeLag = abs(aTime - bTime)
+        if timeUnits == 'minutes':
+            # Converting from days to minutes.
+            self.timeLag *= 1440.
+        elif timeUnits == 'seconds':
+            # Converting from days to seconds.
+            self.timeLag *= 86400.
+        elif timeUnits == 'hours':
+            # Converting from days to hours.
+            self.timeLag *= 24.
+        self.used = False
+        return None
+
+    def __lt__(self, other):
+        return self.timeLag < other.timeLag
+
+def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon=0.5, timeUnits='minutes'):
+    # Make the DCF using the z-transformed direct correlation function.
+    # Described in the Alexander (2013) paper.
+
+    # First step is to calculate the time delay for each pair of points.
+    pairs = []
+    for i in xrange(0, len(timesA)):
+        for j in xrange(0, len(timesB)):
+            pairs.append(TimeLagPair(timesA[i], ampsA[i], i, timesB[j], ampsB[j], j, timeUnits=timeUnits))
+    # Now sort according to time lag.
+    pairs.sort()
+
+    # We exit now if we have less than the required number of points for a single bin.
+    if len(pairs) < minpt:
+        return None
+
+    # Now go through from the minimum lag, adding the minimum number of points to begin with.
+    lag = []
+    cor = []
+    finished = False
+    while finished == False:
+        # Go through each of the pairs in turn.
+        binPoints = []
+        for i in xrange(0, len(pairs)):
+            # Has this pair already been used?
+            if pairs[i].used == True:
+                continue
+            # Is this lag within the lag limits?
+            if minlag is not None and pairs[i].timeLag < (minlag - epsilon):
+                continue
+            if maxlag is not None and pairs[i].timeLag > (maxlag + epsilon):
+                continue
+            # We check if one of these values is already in the bin.
+            for j in xrange(0, len(binPoints)):
+                if (pairs[i].indices[0] == binPoints[j].indices[0] or
+                    pairs[i].indices[1] == binPoints[j].indices[1]):
+                    # We discard this point by marking it as used.
+                    pairs[i].used = True
+                    break
+            if pairs[i].used == True:
+                continue
+            # We now add think about adding this to our list.
+            if len(binPoints) >= minpt:
+                # We can still add this point, if it is close to the last added lag.
+                lagdiff = pairs[i].timeLag - binPoints[-1].timeLag
+                if lagdiff <= epsilon:
+                    binPoints.append(pairs[i])
+                else:
+                    # Nothing else can be added.
+                    break
+            else:
+                # We don't yet have enough, so we add this point.
+                binPoints.append(pairs[i])
+        # We're out of the loop now.
+        if len(binPoints) < minpt:
+            # We can no longer make any valid bins.
+            finished = True
+            break
+        # Otherwise, we can calculate the correlation for this bin.
+        # Calculate the average amplitude.
+        meanAmpA = 0.
+        meanAmpB = 0.
+        nAmp = 0
+        for i in xrange(0, len(binPoints)):
+            meanAmpA += binPoints[i].amps[0]
+            meanAmpB += binPoints[i].amps[1]
+            nAmp += 1
+        if nAmp > 0:
+            meanAmpA /= float(nAmp)
+            meanAmpB /= float(nAmp)
+        # Now calculate the standard deviation.
+        stdAmpA = 0.
+        stdAmpB = 0.
+        for i in xrange(0, len(binPoints)):
+            stdAmpA += (binPoints[i].amps[0] - meanAmpA)**2
+            stdAmpB += (binPoints[i].amps[1] - meanAmpB)**2
+        stdDevA = stdAmpA / float(nAmp - 1)
+        stdDevB = stdAmpB / float(nAmp - 1)
+        # Now calculate r.
+        r = 0.
+        for i in xrange(0, len(binPoints)):
+            r += (binPoints[i].amps[0] - meanAmpA) * (binPoints[i].amps[1] - meanAmpB) / float(nAmp - 1)
+        r /= (sqrt(stdDevA) * sqrt(stdDevB))
+        
+    
 # This following routine is from Andrew O'Brien.
 '''
 Discrete Correlation Function.
