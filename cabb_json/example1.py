@@ -1,6 +1,7 @@
 import cabb_json as ihv
 import sys
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Read in a single file, which is specified on the command line.
 source = ihv.readJson(sys.argv[1])
@@ -31,6 +32,10 @@ for i in xrange(0, len(acfResults['cor'])):
     plt.errorbar(acfResults['lag'][i], acfResults['cor'][i], fmt='o-', yerr=acfResults['corError'][i],
                  xerr=acfResults['lagError'][i],
                  label="%d MHz" % int(acfResults['frequencies'][i]))
+    timescaleResults = ihv.calculateTimescale(acfResults['lag'][i], acfResults['cor'][i]);
+
+    plt.plot(acfResults['lag'][i],
+             ihv.userGauss(np.array(acfResults['lag'][i]), 1.0, 0.0, timescaleResults[0]), 'ro:', label='fit')
 plt.legend()
 #plt.ylim((0., 1.2))
 plt.savefig('test_acfplot.png')

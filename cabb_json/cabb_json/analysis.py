@@ -9,40 +9,57 @@
 # Our necessary imports.
 import numpy as np
 import math
+from scipy.optimize import curve_fit
 
-# Define model function to be used to fit the auto-correlations.
+# Define model function to be used to fit the time-scale.
 def gauss(x, *p):
     A, mu, sigma = p
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))
 
-def calculateACF(timeSeries, mode="fwhm", tfitmin=0.1, tfitmax=0.8):
+def userGauss(x, A, mu, sigma):
+    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+
+# Define model function where amplitude and mean is fixed, because ACF needs
+# to have a peak strength of 1.0 at lag = 0.0
+def acfGauss(x, *p):
+    sigma, = p
+    return 1.0 * np.exp(-1. * x**2 / (2. * sigma**2))
+
+def calculateTimescale(acfLag, acfCor, mode='fwhm', tfitmin=0.1, tfitmax=0.8):
+    # We take the ACF as a function of lag, and determine what the timescale is.
+
+    # Our initial guess at the Gaussian parameters.
+    # [ std dev ]
+    p0 = [ 1. ]
+
+    popt, pcov = curve_fit(acfGauss, acfLag, acfCor, p0=p0)
+    return popt
+
+def calculateACF(timeSeries):
     if timeSeries['timeUnits'].lower() != "mjd":
         print "ACF analysis requires MJD times."
         return None
 
     # We do the ACF for each frequency separately.
     retVal = { 'cor': [], 'lag': [], 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'],
-               'corError': [], 'lagError': [] }
+               'corError': [], 'lagError': [], 'timeUnits': "minutes" }
     for i in xrange(0, len(timeSeries['frequencies'])):
         times = np.array(timeSeries['times'][i]) - min(timeSeries['times'][i])
-        print "times"
+        #print "times"
         # Convert into minutes.
         times *= 1440.
-        # Chop one of the bits out if the array has even length.
-        print times
+        #print times
         fluxes = np.array(timeSeries['fluxDensities'][i])
-        print "fluxes"
-        print fluxes
+        #print "fluxes"
+        #print fluxes
         start = np.min(times)
         stop = np.max(times)
-        print "start / stop"
-        print start
-        print stop
-        nbins = len(times) * 2 - 3
-
+        #print "start / stop"
+        #print start
+        #print stop
         trange = stop - start
-        print "trange"
-        print trange
+        #print "trange"
+        #print trange
         minlag = -trange
         maxlag = trange
         # Check for some unusable conditions.
