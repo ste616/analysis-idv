@@ -8,6 +8,7 @@
 
 # Our necessary imports.
 import numpy as np
+import math
 
 # Define model function to be used to fit the auto-correlations.
 def gauss(x, *p):
@@ -41,27 +42,28 @@ def calculateACF(timeSeries, mode="fwhm", tfitmin=0.1, tfitmax=0.8):
         trange = stop - start
         print "trange"
         print trange
-        minlag = -trange / 2.0
-        maxlag = trange / 2.0
+        minlag = -trange
+        maxlag = trange
         # Check for some unusable conditions.
         if 0. in fluxes:
             continue
         if len(fluxes) < 3:
             continue
-        lag, cor = dcf(times, fluxes, times, fluxes, minlag=minlag, maxlag=maxlag, numf=nbins, minpt=3)
-        retVal['cor'].append(cor)
-        retVal['lag'].append(lag)
+        acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, minlag=minlag, maxlag=maxlag)
+        retVal['cor'].append(acfData['cor'])
+        retVal['lag'].append(acfData['lag'])
         retVal['frequencies'].append(timeSeries['frequencies'][i])
     return retVal
 
 class TimeLagPair:
     def __init__(self, aTime, aAmp, aIndex, bTime, bAmp, bIndex, timeUnits='minutes'):
         # The time should be supplied in MJD.
+        print "times suppled for pair = %f %f" % (aTime, bTime)
         self.times = [ aTime, bTime ]
         self.amps = [ aAmp, bAmp ]
         self.indices = [ aIndex, bIndex ]
         # We will calculate the time in the time unit.
-        self.timeLag = abs(aTime - bTime)
+        self.timeLag = aTime - bTime
         if timeUnits == 'minutes':
             # Converting from days to minutes.
             self.timeLag *= 1440.
@@ -95,48 +97,77 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
 
     # Now go through from the minimum lag, adding the minimum number of points to begin with.
     lag = []
+    lagMinErr = []
+    lagMaxErr = []
     cor = []
     finished = False
-    while finished == False:
+    loopNumber = 0
+    while finished == False and loopNumber < 100:
         # Go through each of the pairs in turn.
         binPoints = []
+        loopNumber += 1
+        print "LL this is loop number %d" % loopNumber
+        print "minlag maxlag = %f %f" % (minlag, maxlag)
         for i in xrange(0, len(pairs)):
             # Has this pair already been used?
+            print "investigating pair %d" % i
+            print pairs[i].timeLag
+            print pairs[i].used
             if pairs[i].used == True:
                 continue
             # Is this lag within the lag limits?
             if minlag is not None and pairs[i].timeLag < (minlag - epsilon):
+                print "lag too small"
                 continue
             if maxlag is not None and pairs[i].timeLag > (maxlag + epsilon):
-                continue
-            # We check if one of these values is already in the bin.
-            for j in xrange(0, len(binPoints)):
-                if (pairs[i].indices[0] == binPoints[j].indices[0] or
-                    pairs[i].indices[1] == binPoints[j].indices[1]):
-                    # We discard this point by marking it as used.
-                    pairs[i].used = True
-                    break
-            if pairs[i].used == True:
+                print "lag too large"
                 continue
             # We now add think about adding this to our list.
+            print "could we add this point?"
+            canAdd = False
             if len(binPoints) >= minpt:
                 # We can still add this point, if it is close to the last added lag.
                 lagdiff = pairs[i].timeLag - binPoints[-1].timeLag
                 if lagdiff <= epsilon:
-                    binPoints.append(pairs[i])
+                    #binPoints.append(pairs[i])
+                    print "may add small offset pair"
+                    canAdd = True
                 else:
                     # Nothing else can be added.
+                    print "cannot add this pair, stopping"
                     break
             else:
                 # We don't yet have enough, so we add this point.
+                #binPoints.append(pairs[i])
+                print "pair can be added"
+                canAdd = True
+            if canAdd == True:
+                print "point may be added, if possible"
+                # We check if one of these values is already in the bin.
+                print "checking for interdependency"
+                for j in xrange(0, len(binPoints)):
+                    if (pairs[i].indices[0] == binPoints[j].indices[0] or
+                        pairs[i].indices[1] == binPoints[j].indices[1]):
+                        # We discard this point by marking it as used.
+                        pairs[i].used = True
+                        break
+                if pairs[i].used == True:
+                    print "pair interdependent"
+                    continue
+                # We get here, we can add.
+                print "adding pair"
+                pairs[i].used = True
                 binPoints.append(pairs[i])
         # We're out of the loop now.
+        print "there are %d points in this bin" % len(binPoints)
         if len(binPoints) < minpt:
             # We can no longer make any valid bins.
             finished = True
+            print "we're done"
             break
         # Otherwise, we can calculate the correlation for this bin.
         # Calculate the average amplitude.
+        print "calculating r"
         meanAmpA = 0.
         meanAmpB = 0.
         nAmp = 0
@@ -147,6 +178,7 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
         if nAmp > 0:
             meanAmpA /= float(nAmp)
             meanAmpB /= float(nAmp)
+        print "mean amplitudes A B = %f %f" % (meanAmpA, meanAmpB)
         # Now calculate the standard deviation.
         stdAmpA = 0.
         stdAmpB = 0.
@@ -155,13 +187,36 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
             stdAmpB += (binPoints[i].amps[1] - meanAmpB)**2
         stdDevA = stdAmpA / float(nAmp - 1)
         stdDevB = stdAmpB / float(nAmp - 1)
+        print "standard deviation A B = %f %f" % (stdDevA, stdDevB)
         # Now calculate r.
         r = 0.
         for i in xrange(0, len(binPoints)):
             r += (binPoints[i].amps[0] - meanAmpA) * (binPoints[i].amps[1] - meanAmpB) / float(nAmp - 1)
-        r /= (sqrt(stdDevA) * sqrt(stdDevB))
-        
-    
+        print "r numerator %f" % r
+        r /= (math.sqrt(stdDevA) * math.sqrt(stdDevB))
+        print "r full %f" % r
+        # From that we get z.
+        z = 0.5 * math.log10( (1 + r) / (1 - r) )
+        print "z now %f" % z
+        # Now we work out the average, min and max lag for this data.
+        lagRangeMin = binPoints[0].timeLag
+        lagRangeMax = binPoints[-1].timeLag
+        lagSum = 0.
+        for i in xrange(0, len(binPoints)):
+            lagSum += binPoints[i].timeLag
+        if len(binPoints) > 0:
+            lagSum /= float(len(binPoints))
+        lagDiffMin = lagSum - lagRangeMin
+        lagDiffMax = lagRangeMax - lagSum
+        # Form our arrays.
+        lag.append(lagSum)
+        lagMinErr.append(lagDiffMin)
+        lagMaxErr.append(lagDiffMax)
+        cor.append(r)
+
+    # Return the arrays.
+    return { 'lag': lag, 'cor': cor, 'lagErrMinus': lagMinErr, 'lagErrPlus': lagMaxErr }
+
 # This following routine is from Andrew O'Brien.
 '''
 Discrete Correlation Function.

@@ -14,8 +14,9 @@ allSpectra = source.getSpectra({ 'splitBand': True, 'spectralAveraging': 0.016,
 
 # Get a time series at two frequencies.
 timeSeries = source.getTimeSeries({ 'spectralAveraging': 16, 'frequencyUnits': "MHz",
-                                    'frequencies': [ 4800, 8400 ], 'alwaysPresent': False,
+                                    'frequencies': [ 4800, 8400, 17400 ], 'alwaysPresent': False,
                                     'timeUnits': 'mjd' })
+print timeSeries
 ihv.timeSeriesPlot(timeSeries, outputName='test_spectralplot.png')
 
 ihv.spectraPlot(allSpectra, outputName='test_gistncar.png', includeZero=True)
