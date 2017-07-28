@@ -24,10 +24,13 @@ ihv.spectraPlot(allSpectra, outputName='test_animation_%04d.png', plotType='anim
 
 acfResults = ihv.calculateACF(timeSeries)
 for i in xrange(0, len(acfResults['cor'])):
-    plt.plot(acfResults['lag'][i], acfResults['cor'][i], 'o-', label="%d MHz" % int(acfResults['frequencies'][i]))
     print acfResults['frequencies'][i]
     print acfResults['lag'][i]
     print acfResults['cor'][i]
+    print acfResults['corError'][i]
+    plt.errorbar(acfResults['lag'][i], acfResults['cor'][i], fmt='o-', yerr=acfResults['corError'][i],
+                 xerr=acfResults['lagError'][i],
+                 label="%d MHz" % int(acfResults['frequencies'][i]))
 plt.legend()
 #plt.ylim((0., 1.2))
 plt.savefig('test_acfplot.png')

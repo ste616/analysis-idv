@@ -21,7 +21,8 @@ def calculateACF(timeSeries, mode="fwhm", tfitmin=0.1, tfitmax=0.8):
         return None
 
     # We do the ACF for each frequency separately.
-    retVal = { 'cor': [], 'lag': [], 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'] }
+    retVal = { 'cor': [], 'lag': [], 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'],
+               'corError': [], 'lagError': [] }
     for i in xrange(0, len(timeSeries['frequencies'])):
         times = np.array(timeSeries['times'][i]) - min(timeSeries['times'][i])
         print "times"
@@ -51,6 +52,8 @@ def calculateACF(timeSeries, mode="fwhm", tfitmin=0.1, tfitmax=0.8):
             continue
         acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, minlag=minlag, maxlag=maxlag)
         retVal['cor'].append(acfData['cor'])
+        retVal['corError'].append([ acfData['corErrMinus'], acfData['corErrPlus'] ])
+        retVal['lagError'].append(acfData['lagErr'])
         retVal['lag'].append(acfData['lag'])
         retVal['frequencies'].append(timeSeries['frequencies'][i])
     return retVal
@@ -97,9 +100,10 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
 
     # Now go through from the minimum lag, adding the minimum number of points to begin with.
     lag = []
-    lagMinErr = []
-    lagMaxErr = []
+    lagErr = []
     cor = []
+    corMinErr = []
+    corMaxErr = []
     finished = False
     loopNumber = 0
     while finished == False and loopNumber < 100:
@@ -166,28 +170,36 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
             print "we're done"
             break
         # Otherwise, we can calculate the correlation for this bin.
-        # Calculate the average amplitude.
+        # Calculate the average amplitude and time lag.
         print "calculating r"
         meanAmpA = 0.
         meanAmpB = 0.
+        meanLag = 0.
         nAmp = 0
         for i in xrange(0, len(binPoints)):
             meanAmpA += binPoints[i].amps[0]
             meanAmpB += binPoints[i].amps[1]
+            meanLag += binPoints[i].timeLag
             nAmp += 1
         if nAmp > 0:
             meanAmpA /= float(nAmp)
             meanAmpB /= float(nAmp)
+            meanLag /= float(nAmp)
         print "mean amplitudes A B = %f %f" % (meanAmpA, meanAmpB)
-        # Now calculate the standard deviation.
+        print "mean lag = %f" % meanLag
+        # Now calculate the standard deviation of the amps and lags.
         stdAmpA = 0.
         stdAmpB = 0.
+        stdLag = 0.
         for i in xrange(0, len(binPoints)):
             stdAmpA += (binPoints[i].amps[0] - meanAmpA)**2
             stdAmpB += (binPoints[i].amps[1] - meanAmpB)**2
+            stdLag += (binPoints[i].timeLag - meanLag)**2
         stdDevA = stdAmpA / float(nAmp - 1)
         stdDevB = stdAmpB / float(nAmp - 1)
+        stdDevLag = stdLag / float(nAmp - 1)
         print "standard deviation A B = %f %f" % (stdDevA, stdDevB)
+        print "standard deviation lag = %f" % math.sqrt(stdDevLag)
         # Now calculate r.
         r = 0.
         for i in xrange(0, len(binPoints)):
@@ -197,25 +209,24 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
         print "r full %f" % r
         # From that we get z.
         z = 0.5 * math.log10( (1 + r) / (1 - r) )
+        xi = z
+        zbar = xi + ((r / (2. * (nAmp - 1))) * (1. + ((5 + r**2) / (4. * (nAmp - 1))) +
+                                                ((11. + 2. * r**2 + 3. * r**4) / (8. * (nAmp - 1)**2))))
+        szsquared = (1 / (nAmp - 1)) * (1. + ((4 - r**2) / (2. * (nAmp - 1))) +
+                                        ((22. - 6. * r**2 - 3. * r**4) / (6. * (nAmp - 1)**2)))
+        deltarplus = abs(math.tanh(zbar + math.sqrt(szsquared)) - r)
+        deltarminus = abs(math.tanh(zbar - math.sqrt(szsquared)) - r)
         print "z now %f" % z
-        # Now we work out the average, min and max lag for this data.
-        lagRangeMin = binPoints[0].timeLag
-        lagRangeMax = binPoints[-1].timeLag
-        lagSum = 0.
-        for i in xrange(0, len(binPoints)):
-            lagSum += binPoints[i].timeLag
-        if len(binPoints) > 0:
-            lagSum /= float(len(binPoints))
-        lagDiffMin = lagSum - lagRangeMin
-        lagDiffMax = lagRangeMax - lagSum
         # Form our arrays.
-        lag.append(lagSum)
-        lagMinErr.append(lagDiffMin)
-        lagMaxErr.append(lagDiffMax)
+        lag.append(meanLag)
+        lagErr.append(math.sqrt(stdDevLag))
         cor.append(r)
+        corMinErr.append(deltarplus)
+        corMaxErr.append(deltarminus)
 
     # Return the arrays.
-    return { 'lag': lag, 'cor': cor, 'lagErrMinus': lagMinErr, 'lagErrPlus': lagMaxErr }
+    return { 'lag': lag, 'cor': cor, 'lagErr': lagErr,
+             'corErrMinus': corMinErr, 'corErrPlus': corMaxErr }
 
 # This following routine is from Andrew O'Brien.
 '''
