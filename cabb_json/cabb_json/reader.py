@@ -181,6 +181,7 @@ class Measurement:
         freqBins = []
         ampBins = []
         nBins = []
+        print " DEBUG: preparing"
         for i in xrange(0, len(self.centreFrequencies)):
             bins = []
             amps = []
@@ -213,6 +214,7 @@ class Measurement:
             ampBins.append(amps)
             nBins.append(n)
         # Now we go through and average the spectrum into those bins.
+        print " DEBUG: channelising"
         for i in xrange(0, len(self.centreFrequencies)):
             for j in xrange(0, len(specArrays['freq'])):
                 for k in xrange(0, len(freqBins[i])):
@@ -231,6 +233,7 @@ class Measurement:
         bandSpec = freqBins
         bandAmp = ampBins
         bandN = nBins
+        print " DEBUG: collating"
         if options['splitBand'] == False:
             bandSpec = [ sum(bandSpec, []) ]
             bandAmp = [ sum(bandAmp, []) ]
@@ -430,6 +433,7 @@ class Source:
         for i in xrange(0, len(measurements)):
             measurements[i].setTimeType(options['timeUnits'])
             mjdArray.append(measurements[i].getMeanTime())
+            print " DEBUG: calculating average spectrum %d / %d" % ( (i + 1), len(measurements) )
             spectraArray.append(measurements[i].getAveragedSpectrum(options))
         # Find the nearest frequency for each specified frequency.
         nearFrequencies = []

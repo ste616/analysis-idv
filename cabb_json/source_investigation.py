@@ -40,8 +40,10 @@ for i in xrange(0, len(sourceFiles)):
     metadata['bandsPresent'] = bandsPresent.keys()
     epochData.append(metadata)
 
+# Sort the data into ascending time order.
 epochData = sorted(epochData, key=lambda data: data['mjdLow'])
 for i in xrange(0, len(epochData)):
+    # Print out information about each file.
     print "FILE %d INFORMATION:" % (i + 1)
     print " Source Name (RA, Dec): %s (%s, %s)" % (epochData[i]['data'].name,
                                                    epochData[i]['data'].rightAscension,
@@ -51,3 +53,41 @@ for i in xrange(0, len(epochData)):
                                                     epochData[i]['mjdHigh'] )
     print "         time interval: %.2f minutes" % epochData[i]['timeInterval']
     print "         bands present: %s" % ", ".join(epochData[i]['bandsPresent'])
+
+# Some settings we need to use later.
+frequencyUnits = "MHz"
+spectralAveraging = 1
+bandFrequencies = [ 4800, 8400, 17400 ]
+
+# Start by collating a complete time-series and plotting it.
+completeTimeSeries = {}
+for i in xrange(0, len(epochData)):
+    print "  GETTING TIME SERIES FOR FILE %d" % (i + 1)
+    timeSeries = epochData[i]['data'].getTimeSeries({ 'spectralAveraging': spectralAveraging,
+                                                      'frequencyUnits': frequencyUnits,
+                                                      'frequencies': bandFrequencies,
+                                                      'alwaysPresent': False,
+                                                      'timeUnits': 'mjd' })
+    print "  STORING TIME SERIES"
+    if 'timeUnits' not in completeTimeSeries:
+        # Start storing the time series.
+        completeTimeSeries = timeSeries
+    else:
+        # Append this new data to the old one.
+        for j in xrange(0, len(timeSeries['frequencies'])):
+            pos = -1
+            for k in xrange(0, len(completeTimeSeries['frequencies'])):
+                if completeTimeSeries['frequencies'][k] == timeSeries['frequencies'][j]:
+                    pos = k
+                    break
+            if pos > -1:
+                # Append this new information.
+                completeTimeSeries['times'][k] += timeSeries['times'][j]
+                completeTimeSeries['fluxDensities'][k] += timeSeries['fluxDensities'][j]
+            else:
+                # Make a new frequency object.
+                completeTimeSeries['frequencies'].append(timeSeries['frequencies'][j])
+                completeTimeSeries['times'].append(timeSeries['times'][j])
+                completeTimeSeries['frequencies'].append(timeSeries['frequencies'][j])
+# We can now plot the complete time series.
+ihv.timeSeriesPlot(completeTimeSeries, outputName='full_%s_timeSeries.png' % sourceName)
