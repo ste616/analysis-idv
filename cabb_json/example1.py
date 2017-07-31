@@ -24,25 +24,6 @@ ihv.spectraPlot(allSpectra, outputName='test_gistncar.png', includeZero=True)
 ihv.spectraPlot(allSpectra, outputName='test_animation_%04d.png', plotType='animation')
 
 acfResults = ihv.calculateACF(timeSeries)
-#for i in xrange(0, len(acfResults['cor'])):
-#    print acfResults['frequencies'][i]
-#    print acfResults['lag'][i]
-#    print acfResults['cor'][i]
-#    print acfResults['corError'][i]
-#    plt.errorbar(acfResults['lag'][i], acfResults['cor'][i], fmt='o-', yerr=acfResults['corError'][i],
-#                 xerr=acfResults['lagError'][i],
-#                 label="%d MHz" % int(acfResults['frequencies'][i]))
-#    timescaleResults = ihv.calculateTimescale(acfResults['lag'][i], acfResults['cor'][i])
-#    print "the %s of the time scale is %f %s" % (timescaleResults['mode'], timescaleResults['value'],
-#                                                 timescaleResults['timeUnits'])
-#    
-#    
-#    plt.plot(acfResults['lag'][i],
-#             ihv.userGauss(np.array(acfResults['lag'][i]), 1.0, 0.0, timescaleResults['sigma']), 'ro:', label='fit')
-#plt.legend()
-#plt.ylim((0., 1.2))
-#plt.savefig('test_acfplot.png')
-#plt.close()
 
 acfResults['timescale'] = []
 for i in xrange(0, len(acfResults['cor'])):
