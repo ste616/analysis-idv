@@ -12,6 +12,8 @@ import numpy as np
 from matplotlib.mlab import griddata
 import datetime
 from astropy.time import Time
+from analysis import userGauss
+import math
 
 # Plot a set of spectra from a getSpecta method, in some ways.
 def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None,
@@ -226,4 +228,57 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     plt.ylim((minFlux, maxFlux))
     plt.savefig(outputName)
     plt.close()
+
+def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png'):
+    # Make a plot of the autocorrelation spectrum, and optionally overlay the
+    # calculated timescale Gaussian and values.
     
+    # First thing to do is plot the autocorrelation spectra as a function of lap.
+    if 'cor' not in acfResults:
+        # Something is wrong with the thing we were passed.
+        return None
+    plotMade = False
+    plots = []
+    # Plot the requested autocorrelation spectra.
+    for i in xrange(0, len(acfResults['cor'])):
+        if len(idx) == 0 or i in idx:
+            pd = plt.errorbar(acfResults['lag'][i], acfResults['cor'][i], fmt='o-', yerr=acfResults['corError'][i],
+                              xerr=acfResults['lagError'][i], label='%d %s' % (int(acfResults['frequencies'][i]),
+                                                                               acfResults['frequencyUnits']))
+            plotMade = True
+            plots.append(pd[0].get_color())
+        else:
+            plots.append(None)
+
+    if plotMade == True:
+        # Then plot the timescale plots if they exist. First, grab the x plot range.
+        xrge = plt.xlim()
+        if 'timescale' in acfResults and len(acfResults['timescale']) == len(acfResults['cor']):
+            # Make a smooth enough plot of the Gaussian.
+            xg = np.arange(xrge[0], xrge[1], 0.1)
+            for i in xrange(0, len(acfResults['cor'])):
+                vg = userGauss(xg, 1.0, 0.0, acfResults['timescale'][i]['sigma'])
+                # Plot the Gaussian line.
+                plt.plot(xg, vg, ':', color=plots[i])
+                # And then the line the user cares about.
+                ypoints = []
+                xpoints = []
+                if acfResults['timescale'][i]['mode'] == "fwhm":
+                    ypoints = [0.5, 0.5]
+                    xpoints = [-1 * acfResults['timescale'][i]['value'] / 2.,
+                               acfResults['timescale'][i]['value'] / 2.]
+                elif acfResults['timescale'][i]['mode'] == 'hwhm':
+                    ypoints = [0.5, 0.5]
+                    xpoints = [0, acfResults['timescale'][i]['value'] / 2.]
+                elif acfResults['timescale'][i]['mode'] == 'fwhme':
+                    ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
+                    xpoints = [-1 * acfResults['timescale'][i]['value'] / 2.,
+                               acfResults['timescale'][i]['value'] / 2.]
+                plt.plot(xpoints, ypoints, '--', color=plots[i])
+        # Put the labels on.
+        plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
+        plt.ylabel("ACF Strength")
+        plt.legend()
+        plt.savefig(outputName)
+        plt.close()
+        

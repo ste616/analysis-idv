@@ -33,7 +33,30 @@ def calculateTimescale(acfLag, acfCor, mode='fwhm', tfitmin=0.1, tfitmax=0.8):
     p0 = [ 1. ]
 
     popt, pcov = curve_fit(acfGauss, acfLag, acfCor, p0=p0)
-    return popt
+    print "popt"
+    print popt
+    print "pcov"
+    print pcov
+
+    # We return the lag at some value on the Gaussian fit.
+    rval = { 'value': None, 'mode': None, 'sigma': popt[0], 'timeUnits': 'minutes' }
+    if mode == 'fwhm' or mode == 'hwhm':
+        rval['mode'] = mode
+        # We want to know the width at the half amplitude.
+        fwhm = 2. * math.sqrt(2. * math.log(2.)) * popt[0]
+        if mode == 'fwhm':
+            rval['value'] = fwhm
+        elif mode == 'hwhm':
+            rval['value'] = fwhm / 2.
+    elif mode == 'fwhme' or mode == 'hwhme':
+        rval['mode'] = mode
+        # We want to know the width at amplitude 1/e.
+        hwhme = math.sqrt(2) * popt[0]
+        if mode == 'fwhme':
+            rval['value'] = hwhme * 2.
+        elif mode == 'hwhme':
+            rval['value'] = hwhme
+    return rval
 
 def calculateACF(timeSeries):
     if timeSeries['timeUnits'].lower() != "mjd":
