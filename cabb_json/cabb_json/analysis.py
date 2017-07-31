@@ -25,37 +25,65 @@ def acfGauss(x, *p):
     sigma, = p
     return 1.0 * np.exp(-1. * x**2 / (2. * sigma**2))
 
-def calculateTimescale(acfLag, acfCor, mode='fwhm', tfitmin=0.1, tfitmax=0.8):
+# The width of a Gaussian at half height.
+def gaussHalfHeight(sigma):
+    return 2. * math.sqrt(2. * math.log(2.)) * sigma
+
+# The width of a Gaussian at 1/e height.
+def gaussEHeight(sigma):
+    return 2. * math.sqrt(2.) * sigma
+
+# Return the width of a Gaussian with sigma, at one of two heights.
+def gaussHeight(sigma, sigmaError=0., height="half"):
+    heightFn = gaussHalfHeight
+    if height == "e":
+        heightFn = gaussEHeight
+    width = heightFn(sigma)
+    widthPlus = abs(width - heightFn(sigma + sigmaError))
+    widthMinus = abs(width - heightFn(sigma - sigmaError))
+    widthError = (widthPlus + widthMinus) / 2.
+    return (width, widthError)
+
+def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tfitmax=0.8):
     # We take the ACF as a function of lag, and determine what the timescale is.
 
     # Our initial guess at the Gaussian parameters.
     # [ std dev ]
     p0 = [ 1. ]
 
-    popt, pcov = curve_fit(acfGauss, acfLag, acfCor, p0=p0)
-    print "popt"
-    print popt
-    print "pcov"
-    print pcov
+    # We restrict the points that can be used to do the fitting. We do this
+    # with numpy arrays because it's easier.
+    aLag = np.array(acfLag)
+    aCor = np.array(acfCor)
+    aError = np.array(acfCorError)
+    lagBound = np.where((aCor >= tfitmin) & (aCor <= tfitmax))
+
+    # Do the fit.
+    popt, pcov = curve_fit(acfGauss, aLag[lagBound], aCor[lagBound], sigma=aError[lagBound], p0=p0)
 
     # We return the lag at some value on the Gaussian fit.
-    rval = { 'value': None, 'mode': None, 'sigma': popt[0], 'timeUnits': 'minutes' }
+    rval = { 'value': None, 'mode': None, 'sigma': popt[0], 'timeUnits': 'minutes',
+             'sigmaError': math.sqrt(pcov[0,0]), 'valueError': None }
     if mode == 'fwhm' or mode == 'hwhm':
         rval['mode'] = mode
         # We want to know the width at the half amplitude.
-        fwhm = 2. * math.sqrt(2. * math.log(2.)) * popt[0]
+        (fwhm, ewhm) = gaussHeight(popt[0], math.sqrt(pcov[0,0]))
         if mode == 'fwhm':
+            rval['valueError'] = ewhm
             rval['value'] = fwhm
         elif mode == 'hwhm':
+            rval['valueError'] = ewhm / 2.
             rval['value'] = fwhm / 2.
     elif mode == 'fwhme' or mode == 'hwhme':
         rval['mode'] = mode
         # We want to know the width at amplitude 1/e.
-        hwhme = math.sqrt(2) * popt[0]
+        (fwhme, ewhme) = gaussHeight(popt[0], math.sqrt(pcov[0,0]), height='e')
         if mode == 'fwhme':
-            rval['value'] = hwhme * 2.
+            rval['valueError'] = ewhme
+            rval['value'] = fwhme
         elif mode == 'hwhme':
-            rval['value'] = hwhme
+            rval['valueError'] = ewhme / 2.
+            rval['value'] = fwhme / 2.
     return rval
 
 def calculateACF(timeSeries):
@@ -101,7 +129,7 @@ def calculateACF(timeSeries):
 class TimeLagPair:
     def __init__(self, aTime, aAmp, aIndex, bTime, bAmp, bIndex, timeUnits='minutes'):
         # The time should be supplied in MJD.
-        print "times suppled for pair = %f %f" % (aTime, bTime)
+        #print "times suppled for pair = %f %f" % (aTime, bTime)
         self.times = [ aTime, bTime ]
         self.amps = [ aAmp, bAmp ]
         self.indices = [ aIndex, bIndex ]
@@ -150,45 +178,43 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
         # Go through each of the pairs in turn.
         binPoints = []
         loopNumber += 1
-        print "LL this is loop number %d" % loopNumber
-        print "minlag maxlag = %f %f" % (minlag, maxlag)
+        #print "LL this is loop number %d" % loopNumber
+        #print "minlag maxlag = %f %f" % (minlag, maxlag)
         for i in xrange(0, len(pairs)):
             # Has this pair already been used?
-            print "investigating pair %d" % i
-            print pairs[i].timeLag
-            print pairs[i].used
+            #print "investigating pair %d" % i
+            #print pairs[i].timeLag
+            #print pairs[i].used
             if pairs[i].used == True:
                 continue
             # Is this lag within the lag limits?
             if minlag is not None and pairs[i].timeLag < (minlag - epsilon):
-                print "lag too small"
+                #print "lag too small"
                 continue
             if maxlag is not None and pairs[i].timeLag > (maxlag + epsilon):
-                print "lag too large"
+                #print "lag too large"
                 continue
             # We now add think about adding this to our list.
-            print "could we add this point?"
+            #print "could we add this point?"
             canAdd = False
             if len(binPoints) >= minpt:
                 # We can still add this point, if it is close to the last added lag.
                 lagdiff = pairs[i].timeLag - binPoints[-1].timeLag
                 if lagdiff <= epsilon:
-                    #binPoints.append(pairs[i])
-                    print "may add small offset pair"
+                    #print "may add small offset pair"
                     canAdd = True
                 else:
                     # Nothing else can be added.
-                    print "cannot add this pair, stopping"
+                    #print "cannot add this pair, stopping"
                     break
             else:
                 # We don't yet have enough, so we add this point.
-                #binPoints.append(pairs[i])
-                print "pair can be added"
+                #print "pair can be added"
                 canAdd = True
             if canAdd == True:
-                print "point may be added, if possible"
+                #print "point may be added, if possible"
                 # We check if one of these values is already in the bin.
-                print "checking for interdependency"
+                #print "checking for interdependency"
                 for j in xrange(0, len(binPoints)):
                     if (pairs[i].indices[0] == binPoints[j].indices[0] or
                         pairs[i].indices[1] == binPoints[j].indices[1]):
@@ -196,22 +222,22 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
                         pairs[i].used = True
                         break
                 if pairs[i].used == True:
-                    print "pair interdependent"
+                    #print "pair interdependent"
                     continue
                 # We get here, we can add.
-                print "adding pair"
+                #print "adding pair"
                 pairs[i].used = True
                 binPoints.append(pairs[i])
         # We're out of the loop now.
-        print "there are %d points in this bin" % len(binPoints)
+        #print "there are %d points in this bin" % len(binPoints)
         if len(binPoints) < minpt:
             # We can no longer make any valid bins.
             finished = True
-            print "we're done"
+            #print "we're done"
             break
         # Otherwise, we can calculate the correlation for this bin.
         # Calculate the average amplitude and time lag.
-        print "calculating r"
+        #print "calculating r"
         meanAmpA = 0.
         meanAmpB = 0.
         meanLag = 0.
@@ -225,8 +251,8 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
             meanAmpA /= float(nAmp)
             meanAmpB /= float(nAmp)
             meanLag /= float(nAmp)
-        print "mean amplitudes A B = %f %f" % (meanAmpA, meanAmpB)
-        print "mean lag = %f" % meanLag
+        #print "mean amplitudes A B = %f %f" % (meanAmpA, meanAmpB)
+        #print "mean lag = %f" % meanLag
         # Now calculate the standard deviation of the amps and lags.
         stdAmpA = 0.
         stdAmpB = 0.
@@ -238,15 +264,15 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
         stdDevA = stdAmpA / float(nAmp - 1)
         stdDevB = stdAmpB / float(nAmp - 1)
         stdDevLag = stdLag / float(nAmp - 1)
-        print "standard deviation A B = %f %f" % (stdDevA, stdDevB)
-        print "standard deviation lag = %f" % math.sqrt(stdDevLag)
+        #print "standard deviation A B = %f %f" % (stdDevA, stdDevB)
+        #print "standard deviation lag = %f" % math.sqrt(stdDevLag)
         # Now calculate r.
         r = 0.
         for i in xrange(0, len(binPoints)):
             r += (binPoints[i].amps[0] - meanAmpA) * (binPoints[i].amps[1] - meanAmpB) / float(nAmp - 1)
-        print "r numerator %f" % r
+        #print "r numerator %f" % r
         r /= (math.sqrt(stdDevA) * math.sqrt(stdDevB))
-        print "r full %f" % r
+        #print "r full %f" % r
         # From that we get z.
         z = 0.5 * math.log10( (1 + r) / (1 - r) )
         xi = z
@@ -256,7 +282,7 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
                                         ((22. - 6. * r**2 - 3. * r**4) / (6. * (nAmp - 1)**2)))
         deltarplus = abs(math.tanh(zbar + math.sqrt(szsquared)) - r)
         deltarminus = abs(math.tanh(zbar - math.sqrt(szsquared)) - r)
-        print "z now %f" % z
+        #print "z now %f" % z
         # Form our arrays.
         lag.append(meanLag)
         lagErr.append(math.sqrt(stdDevLag))

@@ -46,7 +46,9 @@ acfResults = ihv.calculateACF(timeSeries)
 
 acfResults['timescale'] = []
 for i in xrange(0, len(acfResults['cor'])):
-    timescaleResults = ihv.calculateTimescale(acfResults['lag'][i], acfResults['cor'][i], mode='fwhme')
-    print "time scale is %f %s" % (timescaleResults['value'], timescaleResults['timeUnits'])
+    timescaleResults = ihv.calculateTimescale(acfResults['lag'][i], acfResults['cor'][i], acfResults['corError'][i][0],
+                                              mode='hwhm')
+    print "time scale is %.3f +/- %.3f %s" % (timescaleResults['value'], timescaleResults['valueError'],
+                                              timescaleResults['timeUnits'])
     acfResults['timescale'].append(timescaleResults)
-ihv.acfPlot(acfResults)
+ihv.acfPlot(acfResults, plotErrors=True)

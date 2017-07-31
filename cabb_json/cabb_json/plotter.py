@@ -229,7 +229,7 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     plt.savefig(outputName)
     plt.close()
 
-def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png'):
+def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False):
     # Make a plot of the autocorrelation spectrum, and optionally overlay the
     # calculated timescale Gaussian and values.
     
@@ -258,8 +258,16 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png'):
             xg = np.arange(xrge[0], xrge[1], 0.1)
             for i in xrange(0, len(acfResults['cor'])):
                 vg = userGauss(xg, 1.0, 0.0, acfResults['timescale'][i]['sigma'])
+                vgp = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][i]['sigma'] +
+                                               acfResults['timescale'][i]['sigmaError']))
+                vgm = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][i]['sigma'] -
+                                               acfResults['timescale'][i]['sigmaError']))
                 # Plot the Gaussian line.
-                plt.plot(xg, vg, ':', color=plots[i])
+                plt.plot(xg, vg, '-.', color=plots[i])
+                # We plot the error lines if requested.
+                if plotErrors == True:
+                    plt.plot(xg, vgp, ':', color=plots[i])
+                    plt.plot(xg, vgm, ':', color=plots[i])
                 # And then the line the user cares about.
                 ypoints = []
                 xpoints = []
@@ -269,11 +277,14 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png'):
                                acfResults['timescale'][i]['value'] / 2.]
                 elif acfResults['timescale'][i]['mode'] == 'hwhm':
                     ypoints = [0.5, 0.5]
-                    xpoints = [0, acfResults['timescale'][i]['value'] / 2.]
+                    xpoints = [0, acfResults['timescale'][i]['value']]
                 elif acfResults['timescale'][i]['mode'] == 'fwhme':
                     ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
                     xpoints = [-1 * acfResults['timescale'][i]['value'] / 2.,
                                acfResults['timescale'][i]['value'] / 2.]
+                elif acfResults['timescale'][i]['mode'] == 'hwhme':
+                    ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
+                    xpoints = [0, acfResults['timescale'][i]['value'] ]
                 plt.plot(xpoints, ypoints, '--', color=plots[i])
         # Put the labels on.
         plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
