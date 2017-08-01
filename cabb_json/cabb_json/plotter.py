@@ -109,7 +109,10 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
                                 idx = l
                                 break
                     if idx > -1:
-                        ftimes.append(spectra['time'][j].value)
+                        try:
+                            ftimes.append(spectra['time'][j].value)
+                        except AttributeError:
+                            ftimes.append(spectra['time'][j])
                         famps.append(spectra['spectra'][j]['amp'][k][idx])
             if len(ftimes) > 0:
                 finter = np.interp(timeGrid, ftimes, famps, left=float('nan'), right=float('nan'))
