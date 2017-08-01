@@ -181,7 +181,7 @@ class Measurement:
         freqBins = []
         ampBins = []
         nBins = []
-        print " DEBUG: preparing"
+        #print " DEBUG: preparing"
         for i in xrange(0, len(self.centreFrequencies)):
             bins = []
             amps = []
@@ -214,7 +214,7 @@ class Measurement:
             ampBins.append(amps)
             nBins.append(n)
         # Now we go through and average the spectrum into those bins.
-        print " DEBUG: channelising"
+        #print " DEBUG: channelising"
         for i in xrange(0, len(self.centreFrequencies)):
             assign = np.digitize(specArrays['freq'], freqBins[i])
             amps = np.array(specArrays['amp'])
@@ -242,7 +242,7 @@ class Measurement:
         bandSpec = freqBins
         bandAmp = ampBins
         bandN = nBins
-        print " DEBUG: collating"
+        #print " DEBUG: collating"
         if options['splitBand'] == False:
             bandSpec = [ sum(bandSpec, []) ]
             bandAmp = [ sum(bandAmp, []) ]
@@ -341,7 +341,7 @@ class Source:
         data = {}
         if options['splitTime'] == True:
             data = { 'time': [], 'spectra': [], 'stokes': options['stokes'],
-                     'frequencyUnits': options['frequencyUnits'],
+                     'frequencyUnits': options['frequencyUnits'], 'sourceName': self.name,
                      'frequencyResolution': options['spectralAveraging'] }
             if self.timeSeries[options['stokes']] is None:
                 # We haven't got any data here.
@@ -430,7 +430,7 @@ class Source:
         if 'alwaysPresent' not in options:
             options['alwaysPresent'] = True
         # Assemble the data.
-        data = { 'times': [], 'timeUnits': options['timeUnits'],
+        data = { 'times': [], 'timeUnits': options['timeUnits'], 'sourceName': self.name,
                  'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [],
                  'frequencyUnits': options['frequencyUnits'] }
         if self.timeSeries[options['stokes']] is None:
@@ -443,7 +443,7 @@ class Source:
         for i in xrange(0, len(measurements)):
             measurements[i].setTimeType(options['timeUnits'])
             mjdArray.append(measurements[i].getMeanTime())
-            print " DEBUG: calculating average spectrum %d / %d" % ( (i + 1), len(measurements) )
+            #print " DEBUG: calculating average spectrum %d / %d" % ( (i + 1), len(measurements) )
             spectraArray.append(measurements[i].getAveragedSpectrum(options))
         # Find the nearest frequency for each specified frequency.
         nearFrequencies = []

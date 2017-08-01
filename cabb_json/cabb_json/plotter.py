@@ -19,7 +19,7 @@ import math
 def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None,
                 ampRange=None, includeZero=False, frequencyResolution=None,
                 timeResolution=None, outputName='test_spectraPlot.png',
-                colourMap='gist_ncar', animationMax=5):
+                colourMap='gist_ncar', animationMax=5, title=None):
     # Work out some ranges for the data.
     minTime = 0.
     maxTime = 0.
@@ -129,6 +129,11 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.xlabel('Date')
             plt.gcf().autofmt_xdate()
         plt.ylabel('Frequency [%s]' % spectra['frequencyUnits'])
+        if title is None and 'sourceName' in timeSeries:
+            # Default to just putting the name of the source on the top.
+            plt.title(timeSeries['sourceName'])
+        elif title is not None:
+            plt.title(title)
         plt.savefig(outputName)
         plt.close()
     elif plotType == "animation":
@@ -175,7 +180,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
 
 # A routine to plot up time series.
 def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False,
-                   outputName='test_timeSeriesPlot.png'):
+                   outputName='test_timeSeriesPlot.png', title=None):
 
     # Get some details about the data.
     # Minimum and maximum available times.
@@ -224,9 +229,14 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     elif timeSeries['timeUnits'].lower() == "datetime":
         plt.gcf().autofmt_xdate()
         plt.xlabel("Time")
-    print "minTime / maxTime"
-    print minTime
-    print maxTime
+    #print "minTime / maxTime"
+    #print minTime
+    #print maxTime
+    if title is None and 'sourceName' in timeSeries:
+        # Default to just putting the name of the source on the top.
+        plt.title(timeSeries['sourceName'])
+    elif title is not None:
+        plt.title(title)
     plt.xlim((minTime, maxTime))
     plt.ylim((minFlux, maxFlux))
     plt.savefig(outputName)
