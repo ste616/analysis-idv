@@ -253,6 +253,7 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False)
     if plotMade == True:
         # Then plot the timescale plots if they exist. First, grab the x plot range.
         xrge = plt.xlim()
+        yrge = plt.ylim()
         if 'timescale' in acfResults and len(acfResults['timescale']) == len(acfResults['cor']):
             # Make a smooth enough plot of the Gaussian.
             xg = np.arange(xrge[0], xrge[1], 0.1)
@@ -286,6 +287,15 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False)
                     ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
                     xpoints = [0, acfResults['timescale'][i]['value'] ]
                 plt.plot(xpoints, ypoints, '--', color=plots[i])
+                # Plot the range used for the Gaussian fitting.
+                xpoints = [ acfResults['timescale'][i]['fitRegion'][0],
+                            acfResults['timescale'][i]['fitRegion'][0] ]
+                ypoints = [ yrge[0], yrge[1] ]
+                plt.plot(xpoints, ypoints, '-', color=plots[i])
+                xpoints = [ acfResults['timescale'][i]['fitRegion'][1],
+                            acfResults['timescale'][i]['fitRegion'][1] ]
+                ypoints = [ yrge[0], yrge[1] ]
+                plt.plot(xpoints, ypoints, '-', color=plots[i])
         # Put the labels on.
         plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
         plt.ylabel("ACF Strength")

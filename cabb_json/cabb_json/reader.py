@@ -216,14 +216,23 @@ class Measurement:
         # Now we go through and average the spectrum into those bins.
         print " DEBUG: channelising"
         for i in xrange(0, len(self.centreFrequencies)):
-            for j in xrange(0, len(specArrays['freq'])):
-                for k in xrange(0, len(freqBins[i])):
-                    if (specArrays['freq'][j] >= (freqBins[i][k] - chanFreq / 2.) and
-                        specArrays['freq'][j] < (freqBins[i][k] + chanFreq / 2.)):
-                        # This falls in the bin.
-                        ampBins[i][k] += specArrays['amp'][j]
-                        nBins[i][k] += 1
-                        break
+            assign = np.digitize(specArrays['freq'], freqBins[i])
+            amps = np.array(specArrays['amp'])
+            for j in xrange(0, len(freqBins[i])):
+                ourAmps = amps[np.where(assign == j)]
+                nBins[i][j] = len(ourAmps)
+                if nBins[i][j] > 0:
+                    ampBins[i][j] = np.mean(ourAmps)
+
+            #for j in xrange(0, len(specArrays['freq'])):
+                #for k in xrange(0, len(freqBins[i])):
+                #    if (specArrays['freq'][j] >= (freqBins[i][k] - chanFreq / 2.) and
+                #        specArrays['freq'][j] < (freqBins[i][k] + chanFreq / 2.)):
+                #        # This falls in the bin.
+                #        ampBins[i][k] += specArrays['amp'][j]
+                #        nBins[i][k] += 1
+                #        break
+
         # Normalise the output spectra, leaving out any bad channels.
         avgChan = chanFreq
         if options['frequencyUnits'].lower() == "ghz":
@@ -244,7 +253,8 @@ class Measurement:
             for j in xrange(0, len(bandSpec[i])):
                 if bandN[i][j] > 0:
                     f.append(bandSpec[i][j])
-                    a.append(bandAmp[i][j] / float(bandN[i][j]))
+                    #a.append(bandAmp[i][j] / float(bandN[i][j]))
+                    a.append(bandAmp[i][j])
             if options['frequencyUnits'].lower() == "ghz":
                 f = [ (b / 1000.) for b in f ]
             outSpectrum['freq'].append(f)

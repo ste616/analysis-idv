@@ -56,14 +56,34 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     aLag = np.array(acfLag)
     aCor = np.array(acfCor)
     aError = np.array(acfCorError)
-    lagBound = np.where((aCor >= tfitmin) & (aCor <= tfitmax))
+    # Work out the region where the values have fallen below the cutoff.
+    outsideNegative = np.where((aCor < tfitmin) & (aLag < 0))
+    outsidePositive = np.where((aCor < tfitmin) & (aLag > 0))
+    # We want to know the smallest negative number and smallest positive number as the
+    # index bounds.
+    if len(outsideNegative[0]) > 0:
+        smallestNegative = np.max(outsideNegative)
+    else:
+        smallestNegative = 0
+    if len(outsidePositive[0]) > 0:
+        smallestPositive = np.min(outsidePositive)
+    else:
+        smallestPositive = None
+    lagBoundNegative = aLag[smallestNegative + 1]
+    if smallestPositive is not None:
+        lagBoundPositive = aLag[smallestPositive]
+    else:
+        lagBoundPositive = aLag[-1]
 
     # Do the fit.
-    popt, pcov = curve_fit(acfGauss, aLag[lagBound], aCor[lagBound], sigma=aError[lagBound], p0=p0)
+    popt, pcov = curve_fit(acfGauss, aLag[smallestNegative + 1:smallestPositive],
+                           aCor[smallestNegative + 1:smallestPositive],
+                           sigma=aError[smallestNegative + 1:smallestPositive], p0=p0)
 
     # We return the lag at some value on the Gaussian fit.
     rval = { 'value': None, 'mode': None, 'sigma': popt[0], 'timeUnits': 'minutes',
-             'sigmaError': math.sqrt(pcov[0,0]), 'valueError': None }
+             'sigmaError': math.sqrt(pcov[0,0]), 'valueError': None,
+             'fitRegion': [ lagBoundNegative, lagBoundPositive ] }
     if mode == 'fwhm' or mode == 'hwhm':
         rval['mode'] = mode
         # We want to know the width at the half amplitude.
@@ -274,14 +294,21 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
         r /= (math.sqrt(stdDevA) * math.sqrt(stdDevB))
         #print "r full %f" % r
         # From that we get z.
-        z = 0.5 * math.log10( (1 + r) / (1 - r) )
-        xi = z
-        zbar = xi + ((r / (2. * (nAmp - 1))) * (1. + ((5 + r**2) / (4. * (nAmp - 1))) +
-                                                ((11. + 2. * r**2 + 3. * r**4) / (8. * (nAmp - 1)**2))))
-        szsquared = (1 / (nAmp - 1)) * (1. + ((4 - r**2) / (2. * (nAmp - 1))) +
-                                        ((22. - 6. * r**2 - 3. * r**4) / (6. * (nAmp - 1)**2)))
-        deltarplus = abs(math.tanh(zbar + math.sqrt(szsquared)) - r)
-        deltarminus = abs(math.tanh(zbar - math.sqrt(szsquared)) - r)
+        if r < 1:
+            z = 0.5 * math.log10( (1 + r) / (1 - r) )
+            xi = z
+            zbar = xi + ((r / (2. * (nAmp - 1))) * (1. + ((5 + r**2) / (4. * (nAmp - 1))) +
+                                                    ((11. + 2. * r**2 + 3. * r**4) / (8. * (nAmp - 1)**2))))
+            szsquared = (1 / (nAmp - 1)) * (1. + ((4 - r**2) / (2. * (nAmp - 1))) +
+                                            ((22. - 6. * r**2 - 3. * r**4) / (6. * (nAmp - 1)**2)))
+            deltarplus = abs(math.tanh(zbar + math.sqrt(szsquared)) - r)
+            deltarminus = abs(math.tanh(zbar - math.sqrt(szsquared)) - r)
+        else:
+            # We can't use the z equation because 1 / (1 - r) is bad.
+            # But essentially, there is no error on r when r = 1, because it is perfect
+            # auto-correlation.
+            deltarplus = 0.01
+            deltarminus = 0.01
         #print "z now %f" % z
         # Form our arrays.
         lag.append(meanLag)
