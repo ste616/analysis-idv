@@ -3,6 +3,8 @@ import sys
 import os
 import math
 from astropy.time import Time
+import json
+import copy
 
 # This script looks for all files relating to the named source, then tries
 # to form several things:
@@ -25,6 +27,10 @@ for root, dirs, files in os.walk(dataDirectory, followlinks=True):
             sourceFiles.append(os.path.join(root, file))
 print "  found %d files" % len(sourceFiles)
 
+# We'll collect data on the flux density ranges in a file that we can continually append to.
+fdFile = "fluxdensities.csv"
+fdOutputLines = []
+
 # Read in the data for each of these files.
 epochData = []
 for i in xrange(0, len(sourceFiles)):
@@ -34,9 +40,12 @@ for i in xrange(0, len(sourceFiles)):
     metadata['nTimeIntervals'] = len(data.timeSeries['I'].measurements)
     metadata['mjdLow'] = data.timeSeries['I'].measurements[0].mjd['low']
     metadata['mjdHigh'] = data.timeSeries['I'].measurements[-1].mjd['high']
+    metadata['mjdMid'] = metadata['mjdLow'] + (metadata['mjdHigh'] -
+                                               metadata['mjdLow']) / 2.
     metadata['timeInterval'] = (metadata['mjdHigh'] - metadata['mjdLow']) * 1440.
     metadata['timeLow'] = Time(metadata['mjdLow'], format='mjd')
     metadata['timeHigh'] = Time(metadata['mjdHigh'], format='mjd')
+    metadata['timeMid'] = Time(metadata['mjdMid'], format='mjd')
     bandsPresent = {}
     for j in xrange(0, len(data.timeSeries['I'].measurements)):
         band = ihv.frequency2Band(data.timeSeries['I'].measurements[j].bandRanges[0][0])
@@ -57,14 +66,19 @@ for i in xrange(0, len(epochData)):
                                                     epochData[i]['mjdHigh'] )
     print "         time interval: %.2f minutes" % epochData[i]['timeInterval']
     print "         bands present: %s" % ", ".join(epochData[i]['bandsPresent'])
-
+    fdOutputLines.append([ sourceName, epochData[i]['data'].rightAscension, epochData[i]['data'].declination,
+                           epochData[i]['nTimeIntervals'], epochData[i]['mjdLow'], epochData[i]['mjdHigh'],
+                           epochData[i]['timeInterval'] ])
+    
 # Some settings we need to use later.
 frequencyUnits = "MHz"
-spectralAveraging = 1
+spectralAveraging = 16
 bandFrequencies = [ 4800, 8400, 17400 ]
+maxDiff = spectralAveraging
 
 print ""
 print "STAGE 1: COLLATE TIME SERIES"
+
 
 # Start by collating a complete time-series and plotting it.
 completeTimeSeries = {}
@@ -73,30 +87,38 @@ for i in xrange(0, len(epochData)):
     timeSeries = epochData[i]['data'].getTimeSeries({ 'spectralAveraging': spectralAveraging,
                                                       'frequencyUnits': frequencyUnits,
                                                       'frequencies': bandFrequencies,
+                                                      'maxDiff': maxDiff,
                                                       'alwaysPresent': False,
                                                       'timeUnits': 'mjd' })
+    if len(timeSeries['frequencies']) == 0:
+        print "  DISCARDING TIME SERIES"
+        continue
     print "  STORING TIME SERIES"
     epochData[i]['timeSeries'] = timeSeries
     if 'timeUnits' not in completeTimeSeries:
         # Start storing the time series.
-        completeTimeSeries = timeSeries
+        completeTimeSeries = copy.deepcopy(timeSeries)
     else:
         # Append this new data to the old one.
         for j in xrange(0, len(timeSeries['frequencies'])):
             pos = -1
+            #print "matching frequency %.1f" % timeSeries['frequencies'][j]
             for k in xrange(0, len(completeTimeSeries['frequencies'])):
+                #print "  looking at frequency %.1f" % completeTimeSeries['frequencies'][k]
                 if completeTimeSeries['frequencies'][k] == timeSeries['frequencies'][j]:
+                    #print "  found match at %d" % k
                     pos = k
                     break
+            #print "pos now %d" % pos
             if pos > -1:
                 # Append this new information.
-                completeTimeSeries['times'][k] += timeSeries['times'][j]
-                completeTimeSeries['fluxDensities'][k] += timeSeries['fluxDensities'][j]
+                completeTimeSeries['times'][pos] += timeSeries['times'][j]
+                completeTimeSeries['fluxDensities'][pos] += timeSeries['fluxDensities'][j]
             else:
                 # Make a new frequency object.
                 completeTimeSeries['frequencies'].append(timeSeries['frequencies'][j])
                 completeTimeSeries['times'].append(timeSeries['times'][j])
-                completeTimeSeries['frequencies'].append(timeSeries['frequencies'][j])
+                completeTimeSeries['fluxDensities'].append(timeSeries['fluxDensities'][j])
 
     # Make a plot of the individual day's time series.
     roughMJD = math.floor(epochData[i]['mjdLow'])
@@ -106,12 +128,66 @@ for i in xrange(0, len(epochData)):
     epochData[i]['timeTuple'] = ( sourceName, roughMJD, year, roughDOY )
     ihv.timeSeriesPlot(timeSeries, title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
                        outputName='daily_%s_timeSeries_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+    modIndex = ihv.calculateModulationIndex(timeSeries)
+    for j in xrange(0, len(modIndex['frequencies'])):
+        fdOutputLines[i] += [ modIndex['frequencies'][j], modIndex['averageFlux'][j],
+                              modIndex['modulationIndex'][j] ]
+    
+# Output the file now.
+with open(fdFile, 'a') as fd:
+    for i in xrange(0, len(fdOutputLines)):
+        outLine = ""
+        for j in xrange(0, len(fdOutputLines[i])):
+            if j > 0:
+                outLine += ","
+            outLine += str(fdOutputLines[i][j])
+        outLine += "\n"
+        fd.write(outLine)
 
 # We can now plot the complete time series.
 ihv.timeSeriesPlot(completeTimeSeries, outputName='full_%s_timeSeries.png' % sourceName)
 
 print ""
-print "STAGE 2: PRODUCE DYNAMIC SPECTRA"
+print "STAGE 2: CALCULATE TIMESCALES"
+
+# We store our timescale results into an object that we will turn into a JSON
+# output file at the end.
+timescaleResults = { sourceName: [] }
+
+for i in xrange(0, len(epochData)):
+    print '  CALCULATING AUTO-CORRELATION FUNCTION FOR EPOCH %d' % (i + 1)
+    acf = ihv.calculateACF(epochData[i]['timeSeries'])
+    acf['timescale'] = []
+    epochData[i]['acf'] = acf
+    for j in xrange(0, len(acf['cor'])):
+        print '    CALCULATING TIMESCALE FOR FREQUENCY %d' % int(acf['frequencies'][j])
+        timescale = ihv.calculateTimescale(acf['lag'][j], acf['cor'][j],
+                                           acf['corError'][j][0], mode='fwhm')
+        print '      timescale is %.1f +/- %.1f %s' % (timescale['value'], timescale['valueError'],
+                                                       timescale['timeUnits'])
+        epochData[i]['acf']['timescale'].append(timescale)
+        # Put this in our timescale results object.
+        timescaleResults[sourceName].append({
+            'frequency': acf['frequencies'][j],
+            'frequencyUnits': acf['frequencyUnits'],
+            'mjd': epochData[i]['mjdMid'],
+            'year': epochData[i]['timeMid'].datetime.timetuple().tm_year,
+            'doy': ihv.astro2doy(epochData[i]['timeMid']),
+            'timescaleType': timescale['mode'],
+            'timescaleValue': timescale['value'],
+            'timescaleError': timescale['valueError'],
+            'timescaleUnits': timescale['timeUnits']
+            })
+    ihv.acfPlot(epochData[i]['acf'], plotErrors=True,
+                title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
+                outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+# Write out our JSON file.
+outputJsonFile = 'timescales_%s.json' % sourceName
+with open(outputJsonFile, 'w') as oj:
+    json.dump(timescaleResults, oj)
+
+print ""
+print "STAGE 3: PRODUCE DYNAMIC SPECTRA"
 
 for i in xrange(0, len(epochData)):
     print "  GETTING SPECTRA FOR FILE %d" % (i + 1)
@@ -124,3 +200,6 @@ for i in xrange(0, len(epochData)):
     # Make a dynamic spectrum plot.
     ihv.spectraPlot(spectra, outputName='daily_%s_dynamic_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
                     title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
+
+
+sys.exit(0)

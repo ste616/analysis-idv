@@ -427,6 +427,8 @@ class Source:
             options['frequencies'] = []
         if 'exactFrequency' not in options:
             options['exactFrequency'] = False
+        if 'maxDiff' not in options:
+            options['maxDiff'] = 10000.
         if 'alwaysPresent' not in options:
             options['alwaysPresent'] = True
         # Assemble the data.
@@ -456,6 +458,9 @@ class Source:
             if near is not None and near > 0:
                 # We have found a near frequency.
                 if options['exactFrequency'] == True and near != options['frequencies'][i]:
+                    # Not usable.
+                    continue
+                if abs(near - options['frequencies'][i]) > options['maxDiff']:
                     # Not usable.
                     continue
                 # This is a good frequency.

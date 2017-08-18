@@ -129,9 +129,9 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.xlabel('Date')
             plt.gcf().autofmt_xdate()
         plt.ylabel('Frequency [%s]' % spectra['frequencyUnits'])
-        if title is None and 'sourceName' in timeSeries:
+        if title is None and 'sourceName' in spectra:
             # Default to just putting the name of the source on the top.
-            plt.title(timeSeries['sourceName'])
+            plt.title(spectra['sourceName'])
         elif title is not None:
             plt.title(title)
         plt.savefig(outputName)
@@ -242,7 +242,7 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     plt.savefig(outputName)
     plt.close()
 
-def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False):
+def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False, title=None):
     # Make a plot of the autocorrelation spectrum, and optionally overlay the
     # calculated timescale Gaussian and values.
     
@@ -313,6 +313,11 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False)
         plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
         plt.ylabel("ACF Strength")
         plt.legend()
+        if title is None and 'sourceName' in acfResults:
+            # Default to just putting the name of the source on the top.
+            plt.title(acfResults['sourceName'])
+        elif title is not None:
+            plt.title(title)
         plt.savefig(outputName)
         plt.close()
         

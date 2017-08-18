@@ -76,6 +76,9 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
         lagBoundPositive = aLag[-1]
 
     # Do the fit.
+    usedLags = aLag[smallestNegative + 1:smallestPositive]
+    usedCor = aCor[smallestNegative + 1:smallestPositive]
+    usedError = aError[smallestNegative + 1:smallestPositive]
     popt, pcov = curve_fit(acfGauss, aLag[smallestNegative + 1:smallestPositive],
                            aCor[smallestNegative + 1:smallestPositive],
                            sigma=aError[smallestNegative + 1:smallestPositive], p0=p0)
@@ -113,7 +116,7 @@ def calculateACF(timeSeries):
 
     # We do the ACF for each frequency separately.
     retVal = { 'cor': [], 'lag': [], 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'],
-               'corError': [], 'lagError': [], 'timeUnits': "minutes" }
+               'corError': [], 'lagError': [], 'timeUnits': "minutes", 'sourceName': timeSeries['sourceName'] }
     for i in xrange(0, len(timeSeries['frequencies'])):
         times = np.array(timeSeries['times'][i]) - min(timeSeries['times'][i])
         #print "times"
@@ -131,8 +134,8 @@ def calculateACF(timeSeries):
         trange = stop - start
         #print "trange"
         #print trange
-        minlag = -trange
-        maxlag = trange
+        minlag = -trange / 2.
+        maxlag = trange / 2.
         # Check for some unusable conditions.
         if 0. in fluxes:
             continue
@@ -144,6 +147,27 @@ def calculateACF(timeSeries):
         retVal['lagError'].append(acfData['lagErr'])
         retVal['lag'].append(acfData['lag'])
         retVal['frequencies'].append(timeSeries['frequencies'][i])
+    return retVal
+
+def calculateModulationIndex(timeSeries):
+    # The modulation index is measured per frequency.
+    retVal = { 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'],
+               'modulationIndex': [], 'averageFlux': [] }
+    for i in xrange(0, len(timeSeries['frequencies'])):
+        # Compute the mean flux density.
+        meanFlux = np.mean(timeSeries['fluxDensities'][i])
+        retVal['frequencies'].append(timeSeries['frequencies'][i])
+        retVal['averageFlux'].append(meanFlux)
+        # Subtract the mean from each flux.
+        fluxes = np.array(timeSeries['fluxDensities'][i])
+        fluxes -= meanFlux
+        # And then form the modulation index.
+        try:
+            modIndex = math.log10(math.sqrt(np.mean(fluxes**2) / meanFlux**2))
+        except ValueError:
+            # Probably 0 modIndex.
+            modIndex = -6
+        retVal['modulationIndex'].append(modIndex)
     return retVal
 
 class TimeLagPair:
