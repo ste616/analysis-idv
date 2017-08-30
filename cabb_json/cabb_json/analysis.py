@@ -51,6 +51,18 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     # [ std dev ]
     p0 = [ 1. ]
 
+    # Catch dumb inputs.
+    if len(acfLag) <= 0:
+        return None
+
+    # We return the lag at some value on the Gaussian fit.
+    rval = { 'value': None, 'mode': None, 'sigma': None, 'timeUnits': 'minutes',
+             'sigmaError': None, 'valueError': None,
+             'fitRegion': None,
+             'lagInterval': [ min(acfLag), max(acfLag) ],
+             'randomInterval': None, 'isRandom': False,
+             'nRandomLags': 0, 'nSignificantLags': 0 }
+
     # We restrict the points that can be used to do the fitting. We do this
     # with numpy arrays because it's easier.
     aLag = np.array(acfLag)
@@ -69,11 +81,18 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
         smallestPositive = np.min(outsidePositive)
     else:
         smallestPositive = None
-    lagBoundNegative = aLag[smallestNegative + 1]
+    try:
+        lagBoundNegative = aLag[smallestNegative + 1]
+    except IndexError:
+        print "caught index error"
+        print "smallestNegative = %d" % smallestNegative
+        print aLag
+        return rval
     if smallestPositive is not None:
         lagBoundPositive = aLag[smallestPositive]
     else:
         lagBoundPositive = aLag[-1]
+    rval['fitRegion'] = [ lagBoundNegative, lagBoundPositive ]
 
     # Do the fit.
     usedLags = aLag[smallestNegative + 1:smallestPositive]
@@ -82,11 +101,39 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     popt, pcov = curve_fit(acfGauss, aLag[smallestNegative + 1:smallestPositive],
                            aCor[smallestNegative + 1:smallestPositive],
                            sigma=aError[smallestNegative + 1:smallestPositive], p0=p0)
+    rval['sigma'] = popt[0]
+    rval['sigmaError'] = math.sqrt(pcov[0,0])
 
-    # We return the lag at some value on the Gaussian fit.
-    rval = { 'value': None, 'mode': None, 'sigma': popt[0], 'timeUnits': 'minutes',
-             'sigmaError': math.sqrt(pcov[0,0]), 'valueError': None,
-             'fitRegion': [ lagBoundNegative, lagBoundPositive ] }
+    # We also need to check whether the ACF represents a random series.
+    # This will happen if the flux density doesn't actually change except
+    # for random noise on each point.
+    # The 95% random confidence interval is -1/N +/- 2/sqrt(N)
+    # where N is the number of lag bins, excluding the ACF 0 lag (which is always 1).
+    nLags = float(len(acfLag) - 1)
+    meanRandom = -1. / nLags
+    minRandom = meanRandom - 2. / math.sqrt(nLags)
+    maxRandom = meanRandom + 2. / math.sqrt(nLags)
+    rval['randomInterval'] = [ minRandom, maxRandom ]
+    # This is the 95% confidence interval, so each lag has a 5% chance of being
+    # outside it. Thus there should only be N / 20 points outside it for a truly
+    # random sequence. We count how many there actually are.
+    #print "Confidence interval %.3f - %.3f" % (minRandom, maxRandom)
+    nInside = 0
+    for i in xrange(0, len(acfCor)):
+        if acfLag[i] != 0:
+            minCor = acfCor[i] - acfCorError[i]
+            maxCor = acfCor[i] + acfCorError[i]
+            if (((maxCor >= minRandom) and (maxCor <= maxRandom)) or
+                ((minCor >= minRandom) and (minCor <= maxRandom))):
+                nInside = nInside + 1
+    nOutside = len(acfLag) - nInside - 1
+    rval['isRandom'] = False
+    rval['nRandomLags'] = nInside
+    rval['nSignificantLags'] = nOutside
+    if (float(nOutside) < (nLags / 20.)):
+        #print "random sequence found, %d points outside %d lags" % (nOutside, int(nLags))
+        rval['isRandom'] = True
+
     if mode == 'fwhm' or mode == 'hwhm':
         rval['mode'] = mode
         # We want to know the width at the half amplitude.
@@ -137,11 +184,15 @@ def calculateACF(timeSeries):
         minlag = -trange / 2.
         maxlag = trange / 2.
         # Check for some unusable conditions.
+        #print fluxes
         if 0. in fluxes:
+            #print "fluxes have zeroes"
             continue
         if len(fluxes) < 3:
+            #print "too few fluxes"
             continue
-        acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, minlag=minlag, maxlag=maxlag)
+        acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, 
+                       minlag=minlag, maxlag=maxlag)
         retVal['cor'].append(acfData['cor'])
         retVal['corError'].append([ acfData['corErrMinus'], acfData['corErrPlus'] ])
         retVal['lagError'].append(acfData['lagErr'])

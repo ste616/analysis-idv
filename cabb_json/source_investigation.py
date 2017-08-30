@@ -36,26 +36,36 @@ epochData = []
 for i in xrange(0, len(sourceFiles)):
     data = ihv.readJson(sourceFiles[i])
     # Collect some metadata for ease of use.
-    metadata = { 'data': data }
+    metadata = { 'data': data, 'useable': True }
     metadata['nTimeIntervals'] = len(data.timeSeries['I'].measurements)
-    metadata['mjdLow'] = data.timeSeries['I'].measurements[0].mjd['low']
-    metadata['mjdHigh'] = data.timeSeries['I'].measurements[-1].mjd['high']
-    metadata['mjdMid'] = metadata['mjdLow'] + (metadata['mjdHigh'] -
-                                               metadata['mjdLow']) / 2.
-    metadata['timeInterval'] = (metadata['mjdHigh'] - metadata['mjdLow']) * 1440.
-    metadata['timeLow'] = Time(metadata['mjdLow'], format='mjd')
-    metadata['timeHigh'] = Time(metadata['mjdHigh'], format='mjd')
-    metadata['timeMid'] = Time(metadata['mjdMid'], format='mjd')
-    bandsPresent = {}
-    for j in xrange(0, len(data.timeSeries['I'].measurements)):
-        band = ihv.frequency2Band(data.timeSeries['I'].measurements[j].bandRanges[0][0])
-        bandsPresent[band] = True
-    metadata['bandsPresent'] = bandsPresent.keys()
-    epochData.append(metadata)
+    try:
+        metadata['mjdLow'] = data.timeSeries['I'].measurements[0].mjd['low']
+        metadata['mjdHigh'] = data.timeSeries['I'].measurements[-1].mjd['high']
+        metadata['mjdMid'] = metadata['mjdLow'] + (metadata['mjdHigh'] -
+                                                   metadata['mjdLow']) / 2.
+        metadata['timeInterval'] = (metadata['mjdHigh'] - metadata['mjdLow']) * 1440.
+        metadata['timeLow'] = Time(metadata['mjdLow'], format='mjd')
+        metadata['timeHigh'] = Time(metadata['mjdHigh'], format='mjd')
+        metadata['timeMid'] = Time(metadata['mjdMid'], format='mjd')
+        bandsPresent = {}
+        for j in xrange(0, len(data.timeSeries['I'].measurements)):
+            band = ihv.frequency2Band(data.timeSeries['I'].measurements[j].bandRanges[0][0])
+            bandsPresent[band] = True
+        metadata['bandsPresent'] = bandsPresent.keys()
+    except IndexError:
+        # No data.
+        metadata['useable'] = False
+        metadata['mjdLow'] = 0.
+    if metadata['useable'] == True:
+        epochData.append(metadata)
+    else:
+        print "FILE %d is not useable" % i
 
 # Sort the data into ascending time order.
 epochData = sorted(epochData, key=lambda data: data['mjdLow'])
 for i in xrange(0, len(epochData)):
+    if epochData[i]['useable'] == False:
+        continue
     # Print out information about each file.
     print "FILE %d INFORMATION:" % (i + 1)
     print " Source Name (RA, Dec): %s (%s, %s)" % (epochData[i]['data'].name,
@@ -73,7 +83,9 @@ for i in xrange(0, len(epochData)):
 # Some settings we need to use later.
 frequencyUnits = "MHz"
 spectralAveraging = 16
-bandFrequencies = [ 4800, 8400, 17400 ]
+#bandFrequencies = [ 4500, 5000, 5500, 6000, 6500, 7000, 7500, 
+#                    8000, 8500, 9000, 9500, 10000, 10500, 17400 ]
+bandFrequencies = range(4500, 10600, 100)
 maxDiff = spectralAveraging
 
 print ""
@@ -83,6 +95,8 @@ print "STAGE 1: COLLATE TIME SERIES"
 # Start by collating a complete time-series and plotting it.
 completeTimeSeries = {}
 for i in xrange(0, len(epochData)):
+    if epochData[i]['useable'] == False:
+        continue
     print "  GETTING TIME SERIES FOR FILE %d" % (i + 1)
     timeSeries = epochData[i]['data'].getTimeSeries({ 'spectralAveraging': spectralAveraging,
                                                       'frequencyUnits': frequencyUnits,
@@ -127,7 +141,8 @@ for i in xrange(0, len(epochData)):
     roughDOY = tt.tm_yday
     epochData[i]['timeTuple'] = ( sourceName, roughMJD, year, roughDOY )
     ihv.timeSeriesPlot(timeSeries, title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
-                       outputName='daily_%s_timeSeries_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+                       outputName='daily_%s_timeSeries_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
+                       plotLegend=False)
     modIndex = ihv.calculateModulationIndex(timeSeries)
     for j in xrange(0, len(modIndex['frequencies'])):
         fdOutputLines[i] += [ modIndex['frequencies'][j], modIndex['averageFlux'][j],
@@ -155,6 +170,8 @@ print "STAGE 2: CALCULATE TIMESCALES"
 timescaleResults = { sourceName: [] }
 
 for i in xrange(0, len(epochData)):
+    if epochData[i]['useable'] == False:
+        continue
     print '  CALCULATING AUTO-CORRELATION FUNCTION FOR EPOCH %d' % (i + 1)
     acf = ihv.calculateACF(epochData[i]['timeSeries'])
     acf['timescale'] = []
@@ -162,9 +179,25 @@ for i in xrange(0, len(epochData)):
     for j in xrange(0, len(acf['cor'])):
         print '    CALCULATING TIMESCALE FOR FREQUENCY %d' % int(acf['frequencies'][j])
         timescale = ihv.calculateTimescale(acf['lag'][j], acf['cor'][j],
-                                           acf['corError'][j][0], mode='fwhm')
-        print '      timescale is %.1f +/- %.1f %s' % (timescale['value'], timescale['valueError'],
-                                                       timescale['timeUnits'])
+                                           acf['corError'][j][0], mode='fwhme')
+        if timescale is not None and timescale['value'] is not None:
+            timescaleUnits = timescale['timeUnits']
+            if timescale['isRandom'] == False:
+                print '      timescale is %.1f +/- %.1f %s' % (timescale['value'], timescale['valueError'],
+                                                               timescale['timeUnits'])
+                timescaleValue = timescale['value']
+                timescaleError = timescale['valueError']
+                timescaleType = timescale['mode']
+            else:
+                print '      timescale is > %.1f %s' % (timescale['lagInterval'][1], timescale['timeUnits'])
+                timescaleValue = timescale['lagInterval'][1]
+                timescaleError = -1.
+                timescaleType = 'lower_limit'
+        else:
+            timescaleValue = -1
+            timescaleError = -1
+            timescaleType = 'error'
+            timescaleUnits = 'error'
         epochData[i]['acf']['timescale'].append(timescale)
         # Put this in our timescale results object.
         timescaleResults[sourceName].append({
@@ -173,12 +206,12 @@ for i in xrange(0, len(epochData)):
             'mjd': epochData[i]['mjdMid'],
             'year': epochData[i]['timeMid'].datetime.timetuple().tm_year,
             'doy': ihv.astro2doy(epochData[i]['timeMid']),
-            'timescaleType': timescale['mode'],
-            'timescaleValue': timescale['value'],
-            'timescaleError': timescale['valueError'],
-            'timescaleUnits': timescale['timeUnits']
+            'timescaleType': timescaleType,
+            'timescaleValue': timescaleValue,
+            'timescaleError': timescaleError,
+            'timescaleUnits': timescaleUnits
             })
-    ihv.acfPlot(epochData[i]['acf'], plotErrors=True,
+    ihv.acfPlot(epochData[i]['acf'], plotErrors=True, separatePlots=True,
                 title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
                 outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
 # Write out our JSON file.
@@ -190,6 +223,8 @@ print ""
 print "STAGE 3: PRODUCE DYNAMIC SPECTRA"
 
 for i in xrange(0, len(epochData)):
+    if epochData[i]['useable'] == False:
+        continue
     print "  GETTING SPECTRA FOR FILE %d" % (i + 1)
     spectra = epochData[i]['data'].getSpectra({ 'splitBand': True,
                                                 'spectralAveraging': spectralAveraging,
@@ -200,6 +235,10 @@ for i in xrange(0, len(epochData)):
     # Make a dynamic spectrum plot.
     ihv.spectraPlot(spectra, outputName='daily_%s_dynamic_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
                     title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
+
+
+print ""
+print "STAGE 4: PRODUCE WEB PAGES"
 
 
 sys.exit(0)

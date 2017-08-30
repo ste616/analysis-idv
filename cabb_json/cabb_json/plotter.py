@@ -121,7 +121,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             imageData.append(finter)
         # Mask the nans.
         maskedImageData = np.ma.masked_where(np.isnan(imageData), imageData)
-        plt.pcolormesh(timeGrid, freqGrid, maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
+        plt.pcolormesh(np.array(timeGrid), np.array(freqGrid), maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
         plt.colorbar()
         if spectra['timeUnits'].lower() == "mjd":
             plt.xlabel('MJD')
@@ -180,7 +180,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
 
 # A routine to plot up time series.
 def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False,
-                   outputName='test_timeSeriesPlot.png', title=None):
+                   outputName='test_timeSeriesPlot.png', title=None, plotLegend=True):
 
     # Get some details about the data.
     # Minimum and maximum available times.
@@ -220,7 +220,8 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
         elif timeSeries['frequencyUnits'].lower() == "ghz":
             sLabel = "%.3f GHz" % timeSeries['frequencies'][i]
         plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label=sLabel)
-    plt.legend()
+    if plotLegend == True:
+        plt.legend()
     plt.ylabel("Flux Density (Jy)")
     if timeSeries['timeUnits'].lower() == "doy":
         plt.xlabel("DOY")
@@ -242,7 +243,8 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     plt.savefig(outputName)
     plt.close()
 
-def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False, title=None):
+def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False, title=None,
+            separatePlots=False):
     # Make a plot of the autocorrelation spectrum, and optionally overlay the
     # calculated timescale Gaussian and values.
     
@@ -255,6 +257,8 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False,
     # Plot the requested autocorrelation spectra.
     for i in xrange(0, len(acfResults['cor'])):
         if len(idx) == 0 or i in idx:
+            if separatePlots == True:
+                plt.clf()
             pd = plt.errorbar(acfResults['lag'][i], acfResults['cor'][i], fmt='o-', yerr=acfResults['corError'][i],
                               xerr=acfResults['lagError'][i], label='%d %s' % (int(acfResults['frequencies'][i]),
                                                                                acfResults['frequencyUnits']))
@@ -263,61 +267,77 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False,
         else:
             plots.append(None)
 
-    if plotMade == True:
-        # Then plot the timescale plots if they exist. First, grab the x plot range.
-        xrge = plt.xlim()
-        yrge = plt.ylim()
-        if 'timescale' in acfResults and len(acfResults['timescale']) == len(acfResults['cor']):
-            # Make a smooth enough plot of the Gaussian.
-            xg = np.arange(xrge[0], xrge[1], 0.1)
-            for i in xrange(0, len(acfResults['cor'])):
-                vg = userGauss(xg, 1.0, 0.0, acfResults['timescale'][i]['sigma'])
-                vgp = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][i]['sigma'] +
-                                               acfResults['timescale'][i]['sigmaError']))
-                vgm = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][i]['sigma'] -
-                                               acfResults['timescale'][i]['sigmaError']))
-                # Plot the Gaussian line.
-                plt.plot(xg, vg, '-.', color=plots[i])
-                # We plot the error lines if requested.
-                if plotErrors == True:
-                    plt.plot(xg, vgp, ':', color=plots[i])
-                    plt.plot(xg, vgm, ':', color=plots[i])
-                # And then the line the user cares about.
-                ypoints = []
-                xpoints = []
-                if acfResults['timescale'][i]['mode'] == "fwhm":
-                    ypoints = [0.5, 0.5]
-                    xpoints = [-1 * acfResults['timescale'][i]['value'] / 2.,
-                               acfResults['timescale'][i]['value'] / 2.]
-                elif acfResults['timescale'][i]['mode'] == 'hwhm':
-                    ypoints = [0.5, 0.5]
-                    xpoints = [0, acfResults['timescale'][i]['value']]
-                elif acfResults['timescale'][i]['mode'] == 'fwhme':
-                    ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
-                    xpoints = [-1 * acfResults['timescale'][i]['value'] / 2.,
-                               acfResults['timescale'][i]['value'] / 2.]
-                elif acfResults['timescale'][i]['mode'] == 'hwhme':
-                    ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
-                    xpoints = [0, acfResults['timescale'][i]['value'] ]
-                plt.plot(xpoints, ypoints, '--', color=plots[i])
-                # Plot the range used for the Gaussian fitting.
-                xpoints = [ acfResults['timescale'][i]['fitRegion'][0],
-                            acfResults['timescale'][i]['fitRegion'][0] ]
-                ypoints = [ yrge[0], yrge[1] ]
-                plt.plot(xpoints, ypoints, '-', color=plots[i])
-                xpoints = [ acfResults['timescale'][i]['fitRegion'][1],
-                            acfResults['timescale'][i]['fitRegion'][1] ]
-                ypoints = [ yrge[0], yrge[1] ]
-                plt.plot(xpoints, ypoints, '-', color=plots[i])
-        # Put the labels on.
-        plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
-        plt.ylabel("ACF Strength")
-        plt.legend()
-        if title is None and 'sourceName' in acfResults:
-            # Default to just putting the name of the source on the top.
-            plt.title(acfResults['sourceName'])
-        elif title is not None:
-            plt.title(title)
-        plt.savefig(outputName)
-        plt.close()
+        if plotMade == True and ((separatePlots == True) or (i == len(acfResults['cor']) - 1)):
+            # Then plot the timescale plots if they exist. First, grab the x plot range.
+            xrge = plt.xlim()
+            yrge = plt.ylim()
+            if 'timescale' in acfResults and len(acfResults['timescale']) == len(acfResults['cor']):
+                # Make a smooth enough plot of the Gaussian.
+                xg = np.arange(xrge[0], xrge[1], 0.1)
+                for j in xrange(0, len(acfResults['cor'])):
+                    if separatePlots == True:
+                        j = i
+                    if acfResults['timescale'][j]['randomInterval'] is None:
+                        if separatePlots == True:
+                            break
+                        else:
+                            next
+                    # Shade in the random confidence interval.
+                    plt.axhspan(acfResults['timescale'][j]['randomInterval'][0],
+                                acfResults['timescale'][j]['randomInterval'][1], facecolor='r', alpha=0.1)
+                    vg = userGauss(xg, 1.0, 0.0, acfResults['timescale'][j]['sigma'])
+                    vgp = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][j]['sigma'] +
+                                                   acfResults['timescale'][j]['sigmaError']))
+                    vgm = userGauss(xg, 1.0, 0.0, (acfResults['timescale'][j]['sigma'] -
+                                                   acfResults['timescale'][j]['sigmaError']))
+                    # Plot the Gaussian line.
+                    plt.plot(xg, vg, '-.', color=plots[j])
+                    # We plot the error lines if requested.
+                    if plotErrors == True:
+                        plt.plot(xg, vgp, ':', color=plots[j])
+                        plt.plot(xg, vgm, ':', color=plots[j])
+                    # And then the line the user cares about.
+                    ypoints = []
+                    xpoints = []
+                    if acfResults['timescale'][j]['mode'] == "fwhm":
+                        ypoints = [0.5, 0.5]
+                        xpoints = [-1 * acfResults['timescale'][j]['value'] / 2.,
+                                    acfResults['timescale'][j]['value'] / 2.]
+                    elif acfResults['timescale'][j]['mode'] == 'hwhm':
+                        ypoints = [0.5, 0.5]
+                        xpoints = [0, acfResults['timescale'][j]['value']]
+                    elif acfResults['timescale'][j]['mode'] == 'fwhme':
+                        ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
+                        xpoints = [-1 * acfResults['timescale'][j]['value'] / 2.,
+                                    acfResults['timescale'][j]['value'] / 2.]
+                    elif acfResults['timescale'][j]['mode'] == 'hwhme':
+                        ypoints = [ 1. / math.exp(1.), 1. / math.exp(1.) ]
+                        xpoints = [0, acfResults['timescale'][j]['value'] ]
+                    plt.plot(xpoints, ypoints, '--', color=plots[j])
+                    # Plot the range used for the Gaussian fitting.
+                    xpoints = [ acfResults['timescale'][j]['fitRegion'][0],
+                                acfResults['timescale'][j]['fitRegion'][0] ]
+                    ypoints = [ yrge[0], yrge[1] ]
+                    plt.plot(xpoints, ypoints, '-', color=plots[j])
+                    xpoints = [ acfResults['timescale'][j]['fitRegion'][1],
+                                acfResults['timescale'][j]['fitRegion'][1] ]
+                    ypoints = [ yrge[0], yrge[1] ]
+                    plt.plot(xpoints, ypoints, '-', color=plots[j])
+                    if separatePlots == True:
+                        break
+                # Put the labels on.
+                plt.xlabel("Lag [%s]" % acfResults['timeUnits'])
+                plt.ylabel("ACF Strength")
+                plt.legend()
+                if title is None and 'sourceName' in acfResults:
+                    # Default to just putting the name of the source on the top.
+                    plt.title(acfResults['sourceName'])
+                elif title is not None:
+                    plt.title(title)
+                if (separatePlots == True):
+                    sOutputName = outputName.replace(".png", "_f%d.png" % int(acfResults['frequencies'][i]))
+                    plt.savefig(sOutputName)
+                else:
+                    plt.savefig(outputName)
+                plt.close()
         
