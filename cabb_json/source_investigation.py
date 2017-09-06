@@ -5,6 +5,7 @@ import math
 from astropy.time import Time
 import json
 import copy
+import shutil
 
 # This script looks for all files relating to the named source, then tries
 # to form several things:
@@ -140,9 +141,9 @@ for i in xrange(0, len(epochData)):
     year = tt.tm_year
     roughDOY = tt.tm_yday
     epochData[i]['timeTuple'] = ( sourceName, roughMJD, year, roughDOY )
-    ihv.timeSeriesPlot(timeSeries, title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
-                       outputName='daily_%s_timeSeries_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
-                       plotLegend=False)
+    epochData[i]['timeSeriesImage'] = ihv.timeSeriesPlot(timeSeries, plotLegend=False,
+                                                         title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
+                                                         outputName='daily_%s_timeSeries_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
     modIndex = ihv.calculateModulationIndex(timeSeries)
     for j in xrange(0, len(modIndex['frequencies'])):
         fdOutputLines[i] += [ modIndex['frequencies'][j], modIndex['averageFlux'][j],
@@ -233,12 +234,26 @@ for i in xrange(0, len(epochData)):
     print "  STORING SPECTRA"
     epochData[i]['spectra'] = spectra
     # Make a dynamic spectrum plot.
-    ihv.spectraPlot(spectra, outputName='daily_%s_dynamic_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
-                    title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
+    epochData[i]['dynamicImage'] = ihv.spectraPlot(spectra, 
+                                                   outputName='daily_%s_dynamic_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
+                                                   title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
 
 
 print ""
 print "STAGE 4: PRODUCE WEB PAGES"
 
-
+for i in xrange(0, len(epochData)):
+    outputDirectory = "./%s" % sourceData
+    if os.path.exists(outputDirectory) == False:
+        # Make this directory.
+        os.makedir(outputDirectory)
+    if "dynamicImage" in epochData[i] and os.path.isfile(epochData[i]['dynamicImage']):
+        # Move this image into the directory.
+        shutil.move(epochData[i]['dynamicImage'], "%s/%s" % (outputDirectory,
+                                                             epochData[i]['dynamicImage']))
+    if "timeSeriesImage" in epochData[i] and os.path.isfile(epochData[i]['timeSeriesImage']):
+        shutil.move(epochData[i]['timeSeriesImage'], "%s/%s" % (outputDirectory,
+                                                                epochData[i]['timeSeriesImage']))
+    ihv.outputEpoch(epochData=epochData[i], outputDirectory=outputDirectory)
+                    
 sys.exit(0)

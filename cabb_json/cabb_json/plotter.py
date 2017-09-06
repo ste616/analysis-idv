@@ -136,6 +136,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.title(title)
         plt.savefig(outputName)
         plt.close()
+        return outputName
     elif plotType == "animation":
         # We will plot the time evolution of the spectra as a series of images,
         # where each plot has the latest spectrum is coloured, and the previous are
@@ -242,6 +243,7 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     plt.ylim((minFlux, maxFlux))
     plt.savefig(outputName)
     plt.close()
+    return outputName
 
 def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False, title=None,
             separatePlots=False):
