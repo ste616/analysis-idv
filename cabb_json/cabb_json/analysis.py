@@ -134,10 +134,12 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
         #print "random sequence found, %d points outside %d lags" % (nOutside, int(nLags))
         rval['isRandom'] = True
 
+    srch = None
     if mode == 'fwhm' or mode == 'hwhm':
         rval['mode'] = mode
         # We want to know the width at the half amplitude.
         (fwhm, ewhm) = gaussHeight(popt[0], math.sqrt(pcov[0,0]))
+        srch = fwhm / 2.
         if mode == 'fwhm':
             rval['valueError'] = ewhm
             rval['value'] = fwhm
@@ -148,12 +150,26 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
         rval['mode'] = mode
         # We want to know the width at amplitude 1/e.
         (fwhme, ewhme) = gaussHeight(popt[0], math.sqrt(pcov[0,0]), height='e')
+        srch = fwhme / 2.
         if mode == 'fwhme':
             rval['valueError'] = ewhme
             rval['value'] = fwhme
         elif mode == 'hwhme':
             rval['valueError'] = ewhme / 2.
             rval['value'] = fwhme / 2.
+    # Work out how good this fit is.
+    npoints = 0
+    errSquared = 0.
+    print "search is %.2f" % srch
+    for i in xrange(0, len(acfCor)):
+        if abs(acfLag[i]) <= srch:
+            npoints += 1
+            errSquared += (acfCor[i] - userGauss(acfLag[i], 1.0, 0.0, math.sqrt(pcov[0,0])))**2
+    rval['nFitPoints'] = npoints - 1
+    if npoints > 1:
+        rval['fitQuality'] = 1. - math.sqrt(errSquared / float(npoints - 1))
+    else:
+        rval['fitQuality'] = 0.
     return rval
 
 def calculateACF(timeSeries):

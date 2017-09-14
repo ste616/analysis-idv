@@ -256,6 +256,7 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False,
         return None
     plotMade = False
     plots = []
+    plotNames = []
     # Plot the requested autocorrelation spectra.
     for i in xrange(0, len(acfResults['cor'])):
         if len(idx) == 0 or i in idx:
@@ -339,7 +340,35 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False,
                 if (separatePlots == True):
                     sOutputName = outputName.replace(".png", "_f%d.png" % int(acfResults['frequencies'][i]))
                     plt.savefig(sOutputName)
+                    plotNames.append({ 'frequency': int(acfResults['frequencies'][i]),
+                                       'fileName': sOutputName })
                 else:
                     plt.savefig(outputName)
+                    plotNames.append({ 'frequency': 0, 'fileName': outputName })
                 plt.close()
+    return plotNames
         
+def epochTimescalePlot(epochData=None, outputName='test_epochts.png', title=None):
+    # Plot the timescales measured for a single epoch as a function of frequency.
+    if epochData is None:
+        return
+
+    frequencies = np.array(epochData['acf']['frequencies'])
+    timescaleValues = np.array([ aa['value'] for aa in epochData['acf']['timescale'] ])
+    timescaleValueErrors = np.array([ aa['valueError'] for aa in epochData['acf']['timescale'] ])
+    timescaleRandom = np.array([ aa['isRandom'] for aa in epochData['acf']['timescale'] ])
+    timescaleInterval = np.array([ (aa['lagInterval'][1] - aa['lagInterval'][0]) for aa in epochData['acf']['timescale'] ])
+    
+    rIdx = np.where(timescaleRandom==True)
+    timescaleValueErrors[rIdx] = 30.
+    timescaleValues[rIdx] = timescaleInterval[rIdx] * 2.
+    
+    plt.errorbar(frequencies, timescaleValues, yerr=timescaleValueErrors, fmt='o', lolims=timescaleRandom)
+    if title is not None:
+        plt.title(title)
+    plt.xlabel("Frequency [%s]" % epochData['acf']['frequencyUnits'])
+    plt.ylabel("Timescale [%s]" % epochData['acf']['timeUnits'])
+    plt.savefig(outputName)
+    plt.close()
+    
+    return outputName

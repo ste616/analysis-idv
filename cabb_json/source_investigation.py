@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use("Agg")
+
 import cabb_json as ihv
 import sys
 import os
@@ -212,9 +215,10 @@ for i in xrange(0, len(epochData)):
             'timescaleError': timescaleError,
             'timescaleUnits': timescaleUnits
             })
-    ihv.acfPlot(epochData[i]['acf'], plotErrors=True, separatePlots=True,
-                title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
-                outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+    acfPlots = ihv.acfPlot(epochData[i]['acf'], plotErrors=True, separatePlots=True,
+                           title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
+                           outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+    epochData[i]['acfPlotNames'] = acfPlots
 # Write out our JSON file.
 outputJsonFile = 'timescales_%s.json' % sourceName
 with open(outputJsonFile, 'w') as oj:
@@ -242,11 +246,18 @@ for i in xrange(0, len(epochData)):
 print ""
 print "STAGE 4: PRODUCE WEB PAGES"
 
+# To make nice next/previous links, we need to construct the names of the
+# pages first.
 for i in xrange(0, len(epochData)):
-    outputDirectory = "./%s" % sourceData
+    epochData[i]['htmlTimescalesFile'] = "%s_doy%04d-%03d_epochinfo.html" % (epochData[i]['timeTuple'][0],
+                                                                             epochData[i]['timeTuple'][2],
+                                                                             epochData[i]['timeTuple'][3])
+
+for i in xrange(0, len(epochData)):
+    outputDirectory = "./%s" % sourceName
     if os.path.exists(outputDirectory) == False:
         # Make this directory.
-        os.makedir(outputDirectory)
+        os.mkdir(outputDirectory)
     if "dynamicImage" in epochData[i] and os.path.isfile(epochData[i]['dynamicImage']):
         # Move this image into the directory.
         shutil.move(epochData[i]['dynamicImage'], "%s/%s" % (outputDirectory,
@@ -254,6 +265,29 @@ for i in xrange(0, len(epochData)):
     if "timeSeriesImage" in epochData[i] and os.path.isfile(epochData[i]['timeSeriesImage']):
         shutil.move(epochData[i]['timeSeriesImage'], "%s/%s" % (outputDirectory,
                                                                 epochData[i]['timeSeriesImage']))
-    ihv.outputEpoch(epochData=epochData[i], outputDirectory=outputDirectory)
+    if "acfPlotNames" in epochData[i]:
+        for j in xrange(0, len(epochData[i]['acfPlotNames'])):
+            if os.path.isfile(epochData[i]['acfPlotNames'][j]['fileName']):
+                shutil.move(epochData[i]['acfPlotNames'][j]['fileName'],
+                            "%s/%s" % (outputDirectory,
+                                       epochData[i]['acfPlotNames'][j]['fileName']))
+    linkNext = None
+    if i < (len(epochData) - 1):
+        linkNext = epochData[i + 1]['htmlTimescalesFile']
+    linkPrevious = None
+    if i > 0:
+        linkPrevious = epochData[i - 1]['htmlTimescalesFile']
+    linkUp = "index.html"
+    # Make a plot of all the timescales.
+    tscalePlot = ihv.epochTimescalePlot(epochData[i], 
+                                        outputName='%s_doy%04d-%03d_timescaleFrequency.png' % (epochData[i]['timeTuple'][0], epochData[i]['timeTuple'][2], epochData[i]['timeTuple'][3]), 
+                                        title="%s (DOY %04d-%03d)" % (epochData[i]['timeTuple'][0], epochData[i]['timeTuple'][2], epochData[i]['timeTuple'][3]))
+    if os.path.isfile(tscalePlot):
+        shutil.move(tscalePlot, "%s/%s" % (outputDirectory, tscalePlot))
+        epochData[i]['timescaleFrequencyImage'] = tscalePlot
                     
+    ihv.outputEpoch(epochData=epochData[i], outputDirectory=outputDirectory, 
+                    outputName=epochData[i]['htmlTimescalesFile'], linkNext=linkNext,
+                    linkPrevious=linkPrevious, linkUp=linkUp)
+    
 sys.exit(0)
