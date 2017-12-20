@@ -17,7 +17,10 @@ def gauss(x, *p):
     return A*np.exp(-(x-mu)**2/(2.*sigma**2))
 
 def userGauss(x, A, mu, sigma):
-    return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+    if sigma != 0:
+        return A*np.exp(-(x-mu)**2/(2.*sigma**2))
+    else:
+        return 0.
 
 # Define model function where amplitude and mean is fixed, because ACF needs
 # to have a peak strength of 1.0 at lag = 0.0
@@ -58,7 +61,7 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     # We return the lag at some value on the Gaussian fit.
     rval = { 'value': None, 'mode': None, 'sigma': None, 'timeUnits': 'minutes',
              'sigmaError': None, 'valueError': None,
-             'fitRegion': None,
+             'fitRegion': None, 'lowerLimit': False,
              'lagInterval': [ min(acfLag), max(acfLag) ],
              'randomInterval': None, 'isRandom': False,
              'nRandomLags': 0, 'nSignificantLags': 0 }
@@ -98,11 +101,16 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     usedLags = aLag[smallestNegative + 1:smallestPositive]
     usedCor = aCor[smallestNegative + 1:smallestPositive]
     usedError = aError[smallestNegative + 1:smallestPositive]
-    popt, pcov = curve_fit(acfGauss, aLag[smallestNegative + 1:smallestPositive],
-                           aCor[smallestNegative + 1:smallestPositive],
-                           sigma=aError[smallestNegative + 1:smallestPositive], p0=p0)
-    rval['sigma'] = popt[0]
-    rval['sigmaError'] = math.sqrt(pcov[0,0])
+    try:
+        popt, pcov = curve_fit(acfGauss, aLag[smallestNegative + 1:smallestPositive],
+                               aCor[smallestNegative + 1:smallestPositive],
+                               sigma=aError[smallestNegative + 1:smallestPositive], p0=p0)
+    except TypeError:
+        rval['sigma'] = 0.
+        rval['sigmaError'] = 0.
+    else:
+        rval['sigma'] = popt[0]
+        rval['sigmaError'] = math.sqrt(pcov[0,0])
 
     # We also need to check whether the ACF represents a random series.
     # This will happen if the flux density doesn't actually change except
@@ -130,15 +138,26 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     rval['isRandom'] = False
     rval['nRandomLags'] = nInside
     rval['nSignificantLags'] = nOutside
+    fullTimeRange = (rval['lagInterval'][1] - rval['lagInterval'][0])
     if (float(nOutside) < (nLags / 20.)):
         #print "random sequence found, %d points outside %d lags" % (nOutside, int(nLags))
         rval['isRandom'] = True
+        rval['sigma'] = fullTimeRange
+        rval['sigmaError'] = 0.
+        rval['lowerLimit'] = True
+    elif rval['sigma'] > (5 * fullTimeRange):
+        # It's pretty hard to accurately get the standard deviation if we're only
+        # sampling the inner part of the Gaussian, so we restrict it to being
+        # greater than 5 times the time range.
+        rval['sigma'] = 5. * fullTimeRange
+        rval['sigmaError'] = 0.
+        rval['lowerLimit'] = True
 
     srch = None
     if mode == 'fwhm' or mode == 'hwhm':
         rval['mode'] = mode
         # We want to know the width at the half amplitude.
-        (fwhm, ewhm) = gaussHeight(popt[0], math.sqrt(pcov[0,0]))
+        (fwhm, ewhm) = gaussHeight(rval['sigma'], math.sqrt(rval['sigmaError']))
         srch = fwhm / 2.
         if mode == 'fwhm':
             rval['valueError'] = ewhm
@@ -149,7 +168,7 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     elif mode == 'fwhme' or mode == 'hwhme':
         rval['mode'] = mode
         # We want to know the width at amplitude 1/e.
-        (fwhme, ewhme) = gaussHeight(popt[0], math.sqrt(pcov[0,0]), height='e')
+        (fwhme, ewhme) = gaussHeight(rval['sigma'], math.sqrt(rval['sigmaError']), height='e')
         srch = fwhme / 2.
         if mode == 'fwhme':
             rval['valueError'] = ewhme
@@ -160,16 +179,23 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     # Work out how good this fit is.
     npoints = 0
     errSquared = 0.
-    print "search is %.2f" % srch
+    chiSquared = 0.
+    #print "search is %.2f" % srch
     for i in xrange(0, len(acfCor)):
         if abs(acfLag[i]) <= srch:
             npoints += 1
-            errSquared += (acfCor[i] - userGauss(acfLag[i], 1.0, 0.0, math.sqrt(pcov[0,0])))**2
+            errSquared += (acfCor[i] - userGauss(acfLag[i], 1.0, 0.0, math.sqrt(rval['sigma'])))**2
+            chiSquared += (acfCor[i] - userGauss(acfLag[i], 1.0, 0.0, math.sqrt(rval['sigma'])))**2 / acfCorError[i]**2
     rval['nFitPoints'] = npoints - 1
     if npoints > 1:
-        rval['fitQuality'] = 1. - math.sqrt(errSquared / float(npoints - 1))
+        rval['fitQuality'] = math.sqrt(errSquared / float(npoints - 1))
     else:
         rval['fitQuality'] = 0.
+    rval['degreesOfFreedom'] = npoints - 1
+    rval['chiSquared'] = chiSquared
+    # Work out if the data could be drawn from Gaussian distribution.
+
+
     return rval
 
 def calculateACF(timeSeries):
@@ -207,34 +233,54 @@ def calculateACF(timeSeries):
         if len(fluxes) < 3:
             #print "too few fluxes"
             continue
-        acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, 
-                       minlag=minlag, maxlag=maxlag)
-        retVal['cor'].append(acfData['cor'])
-        retVal['corError'].append([ acfData['corErrMinus'], acfData['corErrPlus'] ])
-        retVal['lagError'].append(acfData['lagErr'])
-        retVal['lag'].append(acfData['lag'])
-        retVal['frequencies'].append(timeSeries['frequencies'][i])
+        attempt = 0
+        while attempt < 2:
+            acfData = zdcf(timeSeries['times'][i], fluxes, timeSeries['times'][i], fluxes, 
+                           minlag=minlag, maxlag=maxlag)
+            if acfData is None or 'lag' not in acfData or len(acfData['lag']) == 0:
+                # Can't make the ZDCF.
+                break
+
+            if max(acfData['lag']) > 0:
+                # This is success.
+                attempt = 2
+            else:
+                # Change the minimum lag.
+                minlag /= 2.
+                attempt += 1
+            if attempt >= 2:
+                retVal['cor'].append(acfData['cor'])
+                retVal['corError'].append([ acfData['corErrMinus'], acfData['corErrPlus'] ])
+                retVal['lagError'].append(acfData['lagErr'])
+                retVal['lag'].append(acfData['lag'])
+                retVal['frequencies'].append(timeSeries['frequencies'][i])
     return retVal
 
 def calculateModulationIndex(timeSeries):
     # The modulation index is measured per frequency.
     retVal = { 'frequencies': [], 'frequencyUnits': timeSeries['frequencyUnits'],
                'modulationIndex': [], 'averageFlux': [] }
+    #print "calculating modulation index"
     for i in xrange(0, len(timeSeries['frequencies'])):
         # Compute the mean flux density.
+        #print " for frequency %.1f" % timeSeries['frequencies'][i]
         meanFlux = np.mean(timeSeries['fluxDensities'][i])
+        #print "   mean flux = %.3f" % meanFlux
         retVal['frequencies'].append(timeSeries['frequencies'][i])
         retVal['averageFlux'].append(meanFlux)
         # Subtract the mean from each flux.
         fluxes = np.array(timeSeries['fluxDensities'][i])
         fluxes -= meanFlux
+        #print fluxes
         # And then form the modulation index.
         try:
             modIndex = math.log10(math.sqrt(np.mean(fluxes**2) / meanFlux**2))
+            #print "modIndex = %.3f" % modIndex
         except ValueError:
             # Probably 0 modIndex.
             modIndex = -6
         retVal['modulationIndex'].append(modIndex)
+    #print retVal
     return retVal
 
 class TimeLagPair:
@@ -285,6 +331,7 @@ def zdcf(timesA, ampsA, timesB, ampsB, minlag=0., maxlag=None, minpt=11, epsilon
     corMaxErr = []
     finished = False
     loopNumber = 0
+    #print "  investigating lags between %.3f and %.3f" % (minlag, maxlag)
     while finished == False and loopNumber < 100:
         # Go through each of the pairs in turn.
         binPoints = []

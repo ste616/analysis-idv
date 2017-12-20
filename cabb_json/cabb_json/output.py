@@ -6,7 +6,7 @@ def startPage(title="Test page"):
     doc = dominate.document(title=title)
 
     with doc.head:
-        link(rel='stylesheet', href='ihv.css')
+        link(rel='stylesheet', href='/people/ste616/ihv.css')
 
     with doc:
         div(title, _class='pagetitle')
@@ -17,6 +17,55 @@ def endPage(doc, filename='test.html'):
     # Output the HTML file.
     with open(filename, 'w') as fp:
         print >>fp, doc
+
+def outputIndex(epochData=None, outputDirectory=".", outputName=None,
+                timescalePlots=None):
+    if epochData is None:
+        return
+    if outputName is None:
+        return
+
+    # The page title will just be the source name.
+    pageTitle = epochData[0]['timeTuple'][0]
+    doc = startPage(pageTitle)
+
+    # Build the page.
+    epochsPerRow = 6
+    with doc:
+        with div(_class="epoch-container"):
+            div("Available Epochs", _class="headingClass")
+            with table():
+                i = 0
+                j = 0
+                while i < len(epochData):
+                    with tr():
+                        j = 0
+                        while j < epochsPerRow and i < len(epochData):
+                            with td():
+                                a("%s (DOY %04d-%03d)" % (epochData[i]['epochName'],
+                                                          epochData[i]['timeTuple'][2],
+                                                          epochData[i]['timeTuple'][3]),
+                                  href=epochData[i]['htmlTimescalesFile'])
+                            i += 1
+                            j += 1
+            div("Timescale evolution plots", _class="headingClass")
+            with div(_class="epoch-timescales"):
+                with table():
+                    with thead():
+                        with tr():
+                            td("Frequency")
+                            td("Timescale variation")
+                    with tbody():
+                        for i in xrange(0, len(timescalePlots)):
+                            with tr():
+                                td("%d" % int(timescalePlots[i]['frequency']))
+                                with td():
+                                    with figure():
+                                        img(src=timescalePlots[i]['plotFile'])
+
+    # The filename to write to.
+    pageFile = "%s/%s" % (outputDirectory, outputName)
+    endPage(doc, pageFile)
 
 def outputEpoch(epochData=None, outputDirectory=".", outputName=None, 
                 linkNext=None, linkPrevious=None, linkUp=None):
@@ -62,38 +111,65 @@ def outputEpoch(epochData=None, outputDirectory=".", outputName=None,
                                 td("Frequency")
                                 td("Auto-correlation function")
                                 td("Timescale")
+                                td("log10(Modulation Index)")
                         with tbody():
-                            for i in xrange(0, len(epochData['acfPlotNames'])):
+                            for i in xrange(0, len(epochData['modulationIndex']['frequencies'])):
+                            #for i in xrange(0, len(epochData['acfPlotNames'])):
+                                # Check if we have a plot to show.
+                                showPlot = True
+                                if i >= len(epochData['acfPlotNames']):
+                                    showPlot = False
+                                acfi = -1
+                                if showPlot == True:
+                                    for j in xrange(0, len(epochData['acfPlotNames'])):
+                                        if epochData['acfPlotNames'][j]['frequency'] == int(epochData['modulationIndex']['frequencies'][i]):
+                                            acfi = j
+                                            break
                                 with tr():
-                                    if epochData['acfPlotNames'][i]['frequency'] == 0:
-                                        td("All")
-                                    else:
-                                        td("%d" % epochData['acfPlotNames'][i]['frequency'])
-                                    with td():
-                                        with figure():
-                                            img(src=epochData['acfPlotNames'][i]['fileName'])
-                                    with td():
-                                        if epochData['acfPlotNames'][i]['frequency'] == 0:
-                                            for j in xrange(0, len(epochData['acf']['timescale'])):
-                                                div("%.2f +/- %.2f %s at %d" % (epochData['acf']['timescale'][j]['value'],
-                                                                                epochData['acf']['timescale'][j]['valueError'],
-                                                                                epochData['acf']['timescale'][j]['timeUnits'],
-                                                                                int(epochData['acf']['frequencies'][j])))
+                                    if showPlot == True:
+                                        #if epochData['acfPlotNames'][acfi]['frequency'] == 0:
+                                        if acfi == -1:
+                                            td("All")
                                         else:
-                                            #print epochData['acf']
-                                            for j in xrange(0, len(epochData['acf']['frequencies'])):
-                                                if (epochData['acf']['frequencies'][j] is not None 
-                                                    and int(epochData['acf']['frequencies'][j]) == epochData['acfPlotNames'][i]['frequency']):
-                                                    if (epochData['acf']['timescale'][j]['value'] is None or
-                                                        epochData['acf']['timescale'][j]['valueError'] is None):
-                                                        div("timescale undetermined at %d" % int(epochData['acf']['frequencies'][j]))
-                                                    elif epochData['acf']['timescale'][j]['isRandom'] == True:
-                                                        div("> %.2f %s" % (epochData['acf']['timescale'][j]['value'], epochData['acf']['timescale'][j]['timeUnits']))
-                                                    else:
-                                                        div("%.2f +/- %.2f %s" % (epochData['acf']['timescale'][j]['value'],
-                                                                                  epochData['acf']['timescale'][j]['valueError'],
-                                                                                  epochData['acf']['timescale'][j]['timeUnits']))
-                                                        div("%d points, R=%.2f" % (epochData['acf']['timescale'][j]['nFitPoints'], epochData['acf']['timescale'][j]['fitQuality']))
+                                            td("%d" % epochData['acfPlotNames'][acfi]['frequency'])
+                                    else:
+                                        td("%d" % int(epochData['modulationIndex']['frequencies'][i]))
+                                    with td():
+                                        if showPlot == True:
+                                            with figure():
+                                                img(src=epochData['acfPlotNames'][acfi]['fileName'])
+                                    with td():
+                                        if showPlot == True:
+                                            #if epochData['acfPlotNames'][i]['frequency'] == 0:
+                                            if acfi == -1:
+                                                for j in xrange(0, len(epochData['acf']['timescale'])):
+                                                    edat = epochData['acf']['timescale'][j]
+                                                    div("%.2f +/- %.2f %s at %d" % (edat['value'],
+                                                                                    edat['valueError'],
+                                                                                    edat['timeUnits'],
+                                                                                    int(epochData['acf']['frequencies'][j])))
+                                            else:
+                                                #print epochData['acf']
+                                                for j in xrange(0, len(epochData['acf']['frequencies'])):
+                                                    edat = epochData['acf']['timescale'][j]
+                                                    if (epochData['acf']['frequencies'][j] is not None 
+                                                        and int(epochData['acf']['frequencies'][j]) == epochData['acfPlotNames'][i]['frequency']):
+                                                        if (edat['value'] is None or
+                                                            edat['valueError'] is None):
+                                                            div("timescale undetermined at %d" % int(epochData['acf']['frequencies'][j]))
+                                                        elif edat['lowerLimit'] == True:
+                                                            div("> %.2f %s" % (edat['value'], edat['timeUnits']))
+                                                        else:
+                                                            div("%.2f +/- %.2f %s" % (edat['value'],
+                                                                                    edat['valueError'],
+                                                                                    edat['timeUnits']))
+                                                            div("%d points, R=%.2f" % (edat['nFitPoints'], edat['fitQuality']))
+                                                            if edat['degreesOfFreedom'] > 0:
+                                                                div("fit chi-squared = %.2f (%.2f over %d)" % ((edat['chiSquared'] / float(edat['degreesOfFreedom'])), edat['chiSquared'], edat['degreesOfFreedom']))
+                                                            else:
+                                                                div("no points for chi-squared")
+                                    with td():
+                                        div("%.3f" % epochData['modulationIndex']['modulationIndex'][i])
                                                                                
 
     # The filename to write to.

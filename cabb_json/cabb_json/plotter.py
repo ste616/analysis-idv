@@ -57,8 +57,11 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             maxAmps.append(max(spectra['spectra'][i]['amp'][j]))
     minAmp = min(minAmps)
     maxAmp = max(maxAmps)
-    if includeZero == True:
+    if includeZero == True or minAmp < 0:
         minAmp = 0.
+    if ampRange is not None:
+        minAmp = ampRange[0]
+        maxAmp = ampRange[1]
 
     # Choose some sensible defaults.
     if frequencyResolution is None and 'frequencyResolution' in spectra:
@@ -88,10 +91,13 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             ff += fincr
             freqGrid.append(ff)
         timeGrid = [ minTime ]
+        mjdDay = math.floor(minTime)
+        timeGridHours = [ (minTime - mjdDay) * 24. ]
         tt = minTime
         while tt <= maxTime:
             tt += timeResolution
             timeGrid.append(tt)
+            timeGridHours.append((tt - mjdDay) * 24.)
         # The array that will hold the values.
         imageData = []
         for i in xrange(0, len(freqGrid)):
@@ -121,10 +127,10 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             imageData.append(finter)
         # Mask the nans.
         maskedImageData = np.ma.masked_where(np.isnan(imageData), imageData)
-        plt.pcolormesh(np.array(timeGrid), np.array(freqGrid), maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
+        plt.pcolormesh(np.array(timeGridHours), np.array(freqGrid), maskedImageData, vmin=minAmp, vmax=maxAmp, cmap=colourMap)
         plt.colorbar()
         if spectra['timeUnits'].lower() == "mjd":
-            plt.xlabel('MJD')
+            plt.xlabel('Hours')
         elif spectra['timeUnits'].lower() == "datetime":
             plt.xlabel('Date')
             plt.gcf().autofmt_xdate()
@@ -180,7 +186,7 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.close()
 
 # A routine to plot up time series.
-def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False,
+def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False, ampRange=None,
                    outputName='test_timeSeriesPlot.png', title=None, plotLegend=True):
 
     # Get some details about the data.
@@ -192,6 +198,7 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
         minTime = 0.
         maxTime = 366.
     else:
+        # Transfer times into hours, if we need to.
         minTime = min(timeSeries['times'][0])
         maxTime = max(timeSeries['times'][0])
         for i in xrange(1, len(timeSeries['times'])):
@@ -201,6 +208,9 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
                 minTime = tmin
             if tmax > maxTime:
                 maxTime = tmax
+        mjdDay = math.floor(minTime)
+        minTime = (minTime - mjdDay) * 24.
+        maxTime = (maxTime - mjdDay) * 24.
     # Minimum and maximum flux densities.
     minFlux = min(timeSeries['fluxDensities'][0])
     maxFlux = max(timeSeries['fluxDensities'][0])
@@ -211,23 +221,31 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
             minFlux = fmin
         if fmax > maxFlux:
             maxFlux = fmax
-    if includeZero == True:
+    if includeZero == True or minFlux < 0:
         minFlux = 0.
+    if ampRange is not None:
+        minFlux = ampRange[0]
+        maxFlux = ampRange[1]
     # Make the plot.
+    # Set up a colour map.
+    ax = plt.axes()
+    ax.set_color_cycle([ plt.cm.gist_rainbow(i) for i in np.linspace(0, 1, len(timeSeries['frequencies'])) ])
     for i in xrange(0, len(timeSeries['frequencies'])):
         sLabel = ""
         if timeSeries['frequencyUnits'].lower() == "mhz":
             sLabel = "%d MHz" % int(timeSeries['frequencies'][i])
         elif timeSeries['frequencyUnits'].lower() == "ghz":
             sLabel = "%.3f GHz" % timeSeries['frequencies'][i]
-        plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label=sLabel)
+        timeArray = (np.array(timeSeries['times'][i]) - mjdDay) * 24.
+        #plt.plot(timeSeries['times'][i], timeSeries['fluxDensities'][i], 'o-', label=sLabel)
+        plt.plot(timeArray, timeSeries['fluxDensities'][i], 'o-', label=sLabel)
     if plotLegend == True:
         plt.legend()
     plt.ylabel("Flux Density (Jy)")
     if timeSeries['timeUnits'].lower() == "doy":
         plt.xlabel("DOY")
     elif timeSeries['timeUnits'].lower() == "mjd":
-        plt.xlabel("MJD")
+        plt.xlabel("Hours")
     elif timeSeries['timeUnits'].lower() == "datetime":
         plt.gcf().autofmt_xdate()
         plt.xlabel("Time")
@@ -348,27 +366,84 @@ def acfPlot(acfResults, idx=[], outputName='test_acfPlot.png', plotErrors=False,
                 plt.close()
     return plotNames
         
-def epochTimescalePlot(epochData=None, outputName='test_epochts.png', title=None):
+def epochTimescalePlot(epochData=None, outputName='test_epochts.png', title=None,
+                       maxTimescale=None):
     # Plot the timescales measured for a single epoch as a function of frequency.
     if epochData is None:
         return
 
     frequencies = np.array(epochData['acf']['frequencies'])
-    timescaleValues = np.array([ aa['value'] for aa in epochData['acf']['timescale'] ])
-    timescaleValueErrors = np.array([ aa['valueError'] for aa in epochData['acf']['timescale'] ])
-    timescaleRandom = np.array([ aa['isRandom'] for aa in epochData['acf']['timescale'] ])
+    timescaleValues = np.array([ ((aa['value'] / 60.) if aa['value'] is not None else 0.) for aa in epochData['acf']['timescale'] ])
+    timescaleValueErrors = np.array([ ((aa['valueError'] / 60.) if aa['valueError'] is not None else 0. ) for aa in epochData['acf']['timescale'] ])
+    timescaleLimit = np.array([ aa['lowerLimit'] for aa in epochData['acf']['timescale'] ])
     timescaleInterval = np.array([ (aa['lagInterval'][1] - aa['lagInterval'][0]) for aa in epochData['acf']['timescale'] ])
     
-    rIdx = np.where(timescaleRandom==True)
-    timescaleValueErrors[rIdx] = 30.
-    timescaleValues[rIdx] = timescaleInterval[rIdx] * 2.
+    rIdx = np.where(timescaleLimit==True)
+    timescaleValueErrors[rIdx] = 2.
+    timescaleValues[rIdx] = timescaleInterval[rIdx]
     
-    plt.errorbar(frequencies, timescaleValues, yerr=timescaleValueErrors, fmt='o', lolims=timescaleRandom)
+    plt.errorbar(frequencies, timescaleValues, yerr=timescaleValueErrors, fmt='o', lolims=timescaleLimit)
     if title is not None:
         plt.title(title)
     plt.xlabel("Frequency [%s]" % epochData['acf']['frequencyUnits'])
-    plt.ylabel("Timescale [%s]" % epochData['acf']['timeUnits'])
+    plt.ylabel("Timescale [hours]")
+    if maxTimescale is not None:
+        plt.ylim(0, maxTimescale)
+    else:
+        plt.ylim(ymin=0)
     plt.savefig(outputName)
     plt.close()
     
+    return outputName
+
+def timescaleVariationPlot(allEpochData=None, outputName='test_timescalevar.png', title=None,
+                           mode='frequency', frequency=None, maxTimescale=None):
+    # Plot how the timescale varies over many epochs.
+    if allEpochData is None:
+        return
+
+    # Assemble the time and timescale arrays that we'll plot.
+    mjds = []
+    doys = []
+    timescales = []
+    timescaleErrors = []
+    timescaleLimit = []
+    
+    if mode == "frequency" and frequency is not None:
+        # We'll plot a single frequency's timescale variation.
+        for i in xrange(0, len(allEpochData)):
+            ed = allEpochData[i]
+            for j in xrange(0, len(ed['acf']['frequencies'])):
+                if ed['acf']['frequencies'][j] == frequency:
+                    # This is the frequency we want.
+                    if ed['acf']['timescale'][j]['value'] is not None:
+                        timescales.append(ed['acf']['timescale'][j]['value'] / 60.)
+                        timescaleErrors.append(ed['acf']['timescale'][j]['valueError'] / 60.)
+                        timescaleLimit.append(ed['acf']['timescale'][j]['lowerLimit'])
+                    else:
+                        timescales.append(0.)
+                        timescaleErrors.append(0.)
+                        timescaleLimit.append(True)
+                    doys.append(ed['timeTuple'][3])
+                    
+        ndoys = np.array(doys)
+        ntimescales = np.array(timescales)
+        ntimescaleErrors = np.array(timescaleErrors)
+        ntimescaleLimit = np.array(timescaleLimit)
+        rIdx = np.where(ntimescaleLimit==True)
+        ntimescaleErrors[rIdx] = 2.
+        plt.errorbar(ndoys, ntimescales, yerr=ntimescaleErrors, 
+                     fmt='o', lolims=ntimescaleLimit)
+        if title is not None:
+            plt.title(title)
+        plt.xlabel("Day of Year")
+        plt.ylabel("Timescale [hours]")
+        plt.xlim(0, 365)
+        if maxTimescale is not None:
+            plt.ylim(0, maxTimescale)
+        else:
+            plt.ylim(ymin=0)
+        plt.savefig(outputName)
+        plt.close()
+
     return outputName

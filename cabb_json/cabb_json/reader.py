@@ -513,6 +513,8 @@ def readJson(fileName=None):
     if 'sourceName' in fileContents and 'timeSeries' in fileContents:
         # This is likely an IHV file.
         return Source(fileContents)
+    else:
+        print "can't find good information in %s" % fileName
         
 # Convert a time in astropy time format to year, day of year + fractional UTC.
 def astro2doy(atime=None):
