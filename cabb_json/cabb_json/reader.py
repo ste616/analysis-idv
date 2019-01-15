@@ -195,7 +195,12 @@ class Measurement:
                 # The channels are already wider than the averaging width.
                 chanFreq = self.channelWidth[i]
             # What is the first channel centre frequency?
-            lowCf = lowFreq + ((chanFreq / self.channelWidth[i]) - 1) * self.channelWidth[i] / 2.
+            try:
+                lowCf = lowFreq + ((chanFreq / self.channelWidth[i]) - 1) * self.channelWidth[i] / 2.
+            except ZeroDivisionError:
+                print "can't imagine how you can divide by zero"
+                print self.channelWidth[i]
+                lowCf = lowFreq
             # And then we continue making channels until we run over the band edge.
             bins.append(lowCf)
             amps.append(0.)

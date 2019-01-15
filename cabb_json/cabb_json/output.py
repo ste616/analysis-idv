@@ -144,10 +144,16 @@ def outputEpoch(epochData=None, outputDirectory=".", outputName=None,
                                             if acfi == -1:
                                                 for j in xrange(0, len(epochData['acf']['timescale'])):
                                                     edat = epochData['acf']['timescale'][j]
-                                                    div("%.2f +/- %.2f %s at %d" % (edat['value'],
-                                                                                    edat['valueError'],
-                                                                                    edat['timeUnits'],
-                                                                                    int(epochData['acf']['frequencies'][j])))
+                                                    if ((edat['value'] is not None) and 
+                                                        (edat['valueError'] is not None) and
+                                                        (edat['timeUnits'] is not None) and
+                                                        (edat['timeUnits'] is not None)):
+                                                        div("%.2f +/- %.2f %s at %d" % (edat['value'],
+                                                                                        edat['valueError'],
+                                                                                        edat['timeUnits'],
+                                                                                        int(epochData['acf']['frequencies'][j])))
+                                                    else:
+                                                        div("NONE")
                                             else:
                                                 #print epochData['acf']
                                                 for j in xrange(0, len(epochData['acf']['frequencies'])):

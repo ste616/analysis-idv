@@ -108,6 +108,9 @@ def calculateTimescale(acfLag, acfCor, acfCorError, mode='fwhm', tfitmin=0.1, tf
     except TypeError:
         rval['sigma'] = 0.
         rval['sigmaError'] = 0.
+    except RuntimeError:
+        rval['sigma'] = 0.
+        rval['sigmaError'] = 0.
     else:
         rval['sigma'] = popt[0]
         rval['sigmaError'] = math.sqrt(pcov[0,0])

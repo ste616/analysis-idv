@@ -80,6 +80,21 @@ for i in xrange(0, len(sourceFiles)):
 
 # Sort the data into ascending time order.
 epochData = sorted(epochData, key=lambda data: data['mjdLow'])
+# Remove this if it doesn't have enough data.
+repochs = []
+for i in xrange(0, len(epochData)):
+    if (epochData[i]['nTimeIntervals'] < 3):
+        repochs.append(i)
+
+for i in xrange(0, len(repochs)):
+    print "  Removing epoch %d" % (repochs[i] - i)
+    del epochData[repochs[i] - i]
+
+# Now exit if we have nothing.
+print "  %d EPOCHS REMAINING" % (len(epochData))
+if (len(epochData) == 0):
+    sys.exit()
+
 for i in xrange(0, len(epochData)):
     if epochData[i]['useable'] == False:
         continue
@@ -181,7 +196,10 @@ with open(fdFile, 'a') as fd:
         fd.write(outLine)
 
 # We can now plot the complete time series.
-ihv.timeSeriesPlot(completeTimeSeries, outputName='full_%s_timeSeries.png' % sourceName)
+try:
+    ihv.timeSeriesPlot(completeTimeSeries, outputName='full_%s_timeSeries.png' % sourceName)
+except KeyError as e:
+    print "KeyError caught"
 
 print ""
 print "STAGE 2: CALCULATE TIMESCALES"
@@ -193,6 +211,9 @@ timescaleResults = { sourceName: [] }
 maxTimescale = 0.
 for i in xrange(0, len(epochData)):
     if epochData[i]['useable'] == False:
+        continue
+    if 'timeSeries' not in epochData[i]:
+        epochData[i]['useable'] = False
         continue
     print '  CALCULATING AUTO-CORRELATION FUNCTION FOR EPOCH %d' % (i + 1)
     acf = ihv.calculateACF(epochData[i]['timeSeries'])
@@ -235,9 +256,12 @@ for i in xrange(0, len(epochData)):
             'timescaleError': timescaleError,
             'timescaleUnits': timescaleUnits
             })
-    acfPlots = ihv.acfPlot(epochData[i]['acf'], plotErrors=True, separatePlots=True,
-                           title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
-                           outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+    try:
+        acfPlots = ihv.acfPlot(epochData[i]['acf'], plotErrors=True, separatePlots=True,
+                               title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'],
+                               outputName='daily_%s_acf_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'])
+    except ValueError:
+        acfPlots = None
     epochData[i]['acfPlotNames'] = acfPlots
 # Write out our JSON file.
 outputJsonFile = 'timescales_%s.json' % sourceName
@@ -261,7 +285,10 @@ for i in xrange(0, len(epochData)):
     epochData[i]['dynamicImage'] = ihv.spectraPlot(spectra,
                                                    outputName='daily_%s_dynamic_mjd%d_doy%04d-%03d.png' % epochData[i]['timeTuple'],
                                                    title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
-
+    animationName = 'animation_frames/daily_%s_mjd%d_doy%04d-%03d_animation' % epochData[i]['timeTuple']
+    animationName = animationName + "_frame%d.png"
+    ihv.spectraPlot(spectra, plotType="animation", outputName=animationName,
+                    title='%s (MJD %d DOY %04d-%03d)' % epochData[i]['timeTuple'])
 
 print ""
 print "STAGE 4: PRODUCE WEB PAGES"
@@ -269,6 +296,8 @@ print "STAGE 4: PRODUCE WEB PAGES"
 # To make nice next/previous links, we need to construct the names of the
 # pages first.
 for i in xrange(0, len(epochData)):
+    if epochData[i]['useable'] == False:
+        continue
     epochData[i]['htmlTimescalesFile'] = "%s_doy%04d-%03d_epochinfo.html" % (epochData[i]['timeTuple'][0],
                                                                              epochData[i]['timeTuple'][2],
                                                                              epochData[i]['timeTuple'][3])
@@ -282,10 +311,20 @@ if os.path.exists(outputDirectory) == False:
 # Increase the maximum time scale plotted by 1 hour.
 maxTimescale /= 60.
 maxTimescale += 1.
-for i in xrange(0, len(epochData[0]['acf']['frequencies'])):
-    f = int(epochData[0]['acf']['frequencies'][i])
+nf = 0
+fi = -1
+for i in xrange(0, len(epochData)):
+    if 'acf' in epochData[i]:
+        nf = len(epochData[i]['acf']['frequencies'])
+        fi = i
+        break
+if (nf == 0 or fi == -1):
+    print "Unable to find frequencies"
+    sys.exit()
+for i in xrange(0, nf):
+    f = int(epochData[fi]['acf']['frequencies'][i])
     allTimescalePlot = ihv.timescaleVariationPlot(epochData, frequency=f, maxTimescale=maxTimescale,
-                                                  outputName="%s_%d_timescales.png" % (epochData[0]['timeTuple'][0], f))
+                                                  outputName="%s_%d_timescales.png" % (epochData[fi]['timeTuple'][0], f))
     timescalesDoyPlots.append({ 'frequency': f, 'plotFile': allTimescalePlot })
     if os.path.isfile(allTimescalePlot):
         shutil.move(allTimescalePlot, "%s/%s" % (outputDirectory, allTimescalePlot))
@@ -306,7 +345,7 @@ for i in xrange(0, len(epochData)):
                                                                 epochData[i]['timeSeriesImage']))
     if "acfPlotNames" in epochData[i]:
         for j in xrange(0, len(epochData[i]['acfPlotNames'])):
-            if os.path.isfile(epochData[i]['acfPlotNames'][j]['fileName']):
+            if epochData[i]['acfPlotNames'] is not None and os.path.isfile(epochData[i]['acfPlotNames'][j]['fileName']):
                 shutil.move(epochData[i]['acfPlotNames'][j]['fileName'],
                             "%s/%s" % (outputDirectory,
                                        epochData[i]['acfPlotNames'][j]['fileName']))
