@@ -242,6 +242,7 @@ def calculateACF(timeSeries):
                            minlag=minlag, maxlag=maxlag)
             if acfData is None or 'lag' not in acfData or len(acfData['lag']) == 0:
                 # Can't make the ZDCF.
+                #print "can't make zdcf"
                 break
 
             if max(acfData['lag']) > 0:

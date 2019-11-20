@@ -17,6 +17,7 @@ import shutil
 # 3. Timescale calculations for all data as a function of DOY.
 
 # The argument is the name of the source to look for.
+print " got %d arguments" % len(sys.argv)
 sourceName = sys.argv[1]
 # The second optional argument is the directory under which all data is found.
 dataDirectory = "."
@@ -26,6 +27,7 @@ if len(sys.argv) >= 3:
 rootOutput = "."
 if len(sys.argv) == 4:
     rootOutput = sys.argv[3]
+    print " using root directory %s" % rootOutput
 
 print "Searching for data for source %s" % sourceName
 sourceFiles = []
@@ -95,6 +97,7 @@ print "  %d EPOCHS REMAINING" % (len(epochData))
 if (len(epochData) == 0):
     sys.exit()
 
+allBands = []
 for i in xrange(0, len(epochData)):
     if epochData[i]['useable'] == False:
         continue
@@ -108,6 +111,9 @@ for i in xrange(0, len(epochData)):
                                                     epochData[i]['mjdHigh'] )
     print "         time interval: %.2f minutes" % epochData[i]['timeInterval']
     print "         bands present: %s" % ", ".join(epochData[i]['bandsPresent'])
+    for j in xrange(0, len(epochData[i]['bandsPresent'])):
+        if epochData[i]['bandsPresent'][j] not in allBands:
+            allBands.append(epochData[i]['bandsPresent'][j])
     fdOutputLines.append([ sourceName, epochData[i]['data'].rightAscension, epochData[i]['data'].declination,
                            epochData[i]['nTimeIntervals'], epochData[i]['mjdLow'], epochData[i]['mjdHigh'],
                            epochData[i]['timeInterval'] ])
@@ -118,6 +124,10 @@ spectralAveraging = 16
 #bandFrequencies = [ 4500, 5000, 5500, 6000, 6500, 7000, 7500, 
 #                    8000, 8500, 9000, 9500, 10000, 10500, 17400 ]
 bandFrequencies = range(4500, 10600, 100)
+if ("16cm" in allBands):
+    bandFrequencies = range(1400, 3000, 100)
+    if ("4cm" in allBands):
+        bandFrequencies = range(1400, 10600, 100)
 #bandFrequencies = [ 4806, 8406 ]
 maxDiff = spectralAveraging
 
@@ -319,8 +329,8 @@ for i in xrange(0, len(epochData)):
         fi = i
         break
 if (nf == 0 or fi == -1):
-    print "Unable to find frequencies"
-    sys.exit()
+    print "  WARNING: Unable to find frequencies"
+    #sys.exit()
 for i in xrange(0, nf):
     f = int(epochData[fi]['acf']['frequencies'][i])
     allTimescalePlot = ihv.timescaleVariationPlot(epochData, frequency=f, maxTimescale=maxTimescale,
@@ -330,7 +340,8 @@ for i in xrange(0, nf):
         shutil.move(allTimescalePlot, "%s/%s" % (outputDirectory, allTimescalePlot))
 
 # Make the index file.
-ihv.outputIndex(epochData, outputDirectory, "index.html", timescalesDoyPlots)
+if (nf > 0):
+    ihv.outputIndex(epochData, outputDirectory, "index.html", timescalesDoyPlots)
 
 for i in xrange(0, len(epochData)):
     if os.path.exists(outputDirectory) == False:
