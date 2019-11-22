@@ -20,6 +20,7 @@ import shutil
 import numpy as np
 import sys
 import json
+import re
 
 # A routine to turn a Miriad type time string into a ephem Date.
 def mirtime_to_date(mt):
@@ -51,6 +52,30 @@ def filter_uvlist_variables(logfile_name):
         if ((len(index_elements) > 2) and
             (index_elements[0] == "inttime") and (index_elements[1] == ":")):
             rd['cycle_time'] = float(index_elements[2])
+    return rd
+
+def filter_uvlist_antennas(output):
+    # We send back a dictionary.
+    rd = { 'telescope': "", 'latitude': "", 'longitude': "", 'antennas': [] }
+    outlines = output.split('\n')
+    coords = 0
+    for i in xrange(0, len(outlines)):
+        index_elements = outlines[i].split()
+        if (len(index_elements) > 0):
+            if (index_elements[0] == "Telescope:"):
+                rd['telescope'] = index_elements[1]
+            elif (index_elements[0] == "Latitude:"):
+                rd['latitude'] = index_elements[1]
+            elif (index_elements[0] == "Longitude:"):
+                rd['longitude'] = index_elements[1]
+            elif ((len(index_elements) == 3) and (index_elements[1] == "----------")):
+                coords = 1
+            elif (coords == 1):
+                ant = { 'number': int(index_elements[0]),
+                        'coord_x': float(index_elements[1]),
+                        'coord_y': float(index_elements[2]),
+                        'coord_z': float(index_elements[3]) }
+                rd['antennas'].append(ant)
     return rd
 
 # Use uvindex to work out the necessary parameters of this dataset.
@@ -328,11 +353,150 @@ def measure_flagging_statistic(srcname, freq, stime, etime):
                          select=selstring)
     return uo['flagged_fraction']
 
-def measure(srcname, datadir, coords, fconfig, stime, etime, calresult):
+def calculate_hourangle(obs, obstime, src):
+    obs.date = obstime
+    src.compute(obs)
+    lst = obs.sidereal_time() * 180. / (15. * math.pi)
+    ra = src.ra * 180. / (15. * math.pi)
+    ha = lst - ra
+    if (ha < -12):
+        ha = ha + 24
+    elif (ha > 12):
+        ha = ha - 24
+    return ha
+
+def findWholeWord(w):
+    return re.compile(r'\b({0})\b'.format(w), flags=re.IGNORECASE).search
+
+def determine_array(srcname, freq):
+    print "    determining array"
+    dsets = dataset_find(srcname, freq)
+
+    # The strings for the station configurations.
+    configs = {
+        '6A': "W4   W45  W102 W173 W195 W392",
+        '6B': "W2   W64  W147 W182 W196 W392",
+        '6C': "W0   W10  W113 W140 W182 W392",
+        '6D': "W8   W32  W84  W168 W173 W392",
+        '1.5A': "W100 W110 W147 W168 W196 W392",
+        '1.5B': "W111 W113 W163 W182 W195 W392",
+        '1.5C': "W98  W128 W173 W190 W195 W392",
+        '1.5D': "W102 W109 W140 W182 W196 W392",
+        '750A': "W147 W163 W172 W190 W195 W392",
+        '750B': "W98  W109 W113 W140 W148 W392",
+        '750C': "W64  W84  W100 W110 W113 W392",
+        '750D': "W100 W102 W128 W140 W147 W392",
+        'EW367': "W104 W110 W113 W124 W128 W392",
+        'EW352': "W102 W104 W109 W112 W125 W392",
+        'H214': "W98  W104 W113 N5   N14  W392",
+        'H168': "W100 W104 W111 N7   N11  W392",
+        'H75': "W104 W106 W109 N2   N5   W392",
+        'EW214': "W98  W102 W104 W109 W112 W392",
+        'NS214': "W106 N2   N7   N11  N14  W392",
+        '122C': "W98  W100 W102 W104 W106 W392",
+        '375': "W2   W10  W14  W16  W32  W392",
+        '210': "W98  W100 W102 W109 W112 W392",
+        '122B': "W8   W10  W12  W14  W16  W392",
+        '122A': "W0   W2   W4   W6   W8   W392"
+    }
+
+    # Get the antenna positions.
+    miriad.set_filter(filter_uvlist_antennas)
+    antpos = miriad.uvlist(vis=dsets[0], options="full,array")
+    # Adjust to make CA06 the reference.
+    for i in xrange(0, 6):
+        antpos[i]['coord_x'] = -1. * (antpos[i]['coord_x'] - antpos[5]['coord_x'])
+        antpos[i]['coord_y'] = -1. * (antpos[i]['coord_y'] - antpos[5]['coord_y'])
+        antpos[i]['coord_z'] = -1. * (antpos[i]['coord_z'] - antpos[5]['coord_z'])
+    station_interval = 15.3
+    array_stations = []
+    for i in xrange(0, 6):
+        ew_offset = floor((antpos[i]['coord_y'] / station_interval) + 0.5) + 392
+        ns_offset = floor((antpos[i]['coord_x'] / station_interval) + 0.5) + 0
+        if (ns_offset == 0):
+            array_stations.append("W%d" % ew_offset)
+        else:
+            array_stations.append("N%d" % ns_offset)
+
+    # Find the best match.
+    max_matches = 0
+    match_array = ""
+    for a in configs:
+        curr_match_count = 0
+        for i in xrange(0, len(array_stations)):
+            if (findWholeWord(array_stations[i])(configs[a]) is not None):
+                curr_match_count = curr_match_count + 1
+        if (curr_match_count > max_matches):
+            max_matches = curr_match_count
+            match_array = a
+
+    return match_array
+
+def filter_uvfmeas(output):
+    outlines = output.split('\n')
+
+    rv = { 'fitCoefficients': [], 'alphaCoefficients': [],
+           'alphaReference': { 'fluxDensity': 0, 'frequency': 0 },
+           'fitScatter': 0, 'mode': "", 'stokes': ""
+    }
+
+    for i in xrange(0, len(outlines)):
+        index_elements = outlines[i].split()
+        if (len(index_elements) < 1):
+            continue
+        if (index_elements[0] == "Coeff:"):
+            for j in xrange(1, len(index_elements)):
+                rv['fitCoefficients'].append(float(index_elements[j]))
+        elif (index_elements[0] == "MFCAL"):
+            rv['alphaReference']['fluxDensity'] = float(
+                index_elements[2].replace(",", ""))
+            rv['alphaReference']['frequency'] = float(
+                index_elements[3].replace(",", ""))
+        elif (index_elements[0] == "Alpha:"):
+            for j in xrange(1, len(index_elements)):
+                rv['alphaCoefficients'].append(float(index_elements[j]))
+        elif (index_elements[0] == "Scatter"):
+            rv['fitScatter'] = float(index_elements[3])
+        elif ((len(index_elements) > 3) and
+              (index_elements[3] == "Coefficients:")):
+            rv['mode'] = index_elements[0].lower()
+        elif (index_elements[0] == "Stokes"):
+            rv['stokes'] = index_elements[1]
+
+    return rv
+
+def measure(srcname, datadir, coords, fconfig, stime, etime, calresult, obs):
     print "  measuring source %s parameters" % srcname
 
-    ro = { 'source': srcname, 'closurePhase': [], 'flaggedFraction': [] }
+    smtime = datetime_to_mirtime(stime)
+    emtime = datetime_to_mirtime(etime)
+    selstring = "time(%s,%s)" % (smtime, emtime)
+    
+    ro = { 'source': srcname, 'closurePhase': [], 'flaggedFraction': [],
+           'rightAscension': coords['right_ascension'],
+           'declination': coords['declination'], 'mjdRange': {
+               'low': 0, 'high': 0 }, 'arrayConfiguration': "",
+           'hourAngleRange': { 'low': 0, 'high': 0 },
+           'fluxDensityFits': [], 'fluxDensityData': [], 'defect': []
+    }
 
+    # Get the MJD for the start and end times.
+    setime = ephem.Date(stime)
+    eetime = ephem.Date(etime)
+    ro['mjdRange']['low'] = ephem.julian_date(setime) - 2400000.5
+    ro['mjdRange']['high'] = ephem.julian_date(eetime) - 2400000.5
+
+    # Calculate the hour angle range.
+    body = ephem.FixedBody()
+    body._epoch = '2000'
+    body._ra = coords['right_ascension']
+    body._dec = coords['declination']
+    ro['hourAngleRange']['low'] = calculate_hourangle(obs, setime, body)
+    ro['hourAngleRange']['high'] = calculate_hourangle(obs, eetime, body)
+
+    # Get the array configuration.
+    ro['arrayConfiguration'] = determine_array(srcname, calresult['frequencies'][0])
+    
     stokes = [ 'i' ]
     orders = [ 3 ]
     options = [ ",log" ]
@@ -362,7 +526,28 @@ def measure(srcname, datadir, coords, fconfig, stime, etime, calresult):
                 ro['flaggedFraction'].append(
                     measure_flagging_statistic(srcname, calresult['frequencies'][k],
                                                stime, etime))
-            # Calculate the hour angle ranges.
+        # Measure the flux densities.
+        outplot = "%s/%s_%.4f.ps/cps" % (plotdir, srcname,
+                                         ((ro['mjdRange']['low'] +
+                                           ro['mjdRange']['high']) / 2.))
+        if (os.path.isfile(outplot)):
+            os.remove(outplot)
+        miriad.set_filter('uvfmeas', filter_uvfmeas)
+        isets = []
+        for k in xrange(0, len(calresult['frequencies'])):
+            s = dataset_find(srcname, calresult['frequencies'][k])
+            isets.append(s[0])
+        optionstring = "plotvec,mfflux,machine,malpha%s" % options[i]
+        datafile = "fluxdensities.txt"
+        if (os.path.isfile(datafile)):
+            os.remove(datafile)
+        
+        fm = miriad.uvfmeas(vis=",".join(isets), order=str(orders[i]),
+                            stokes=stokes[i], device=outplot, select=selstring,
+                            options=optionstring, log=datafile)
+        ro['fluxDensityFits'].append(fm)
+        
+        
     return ro
                 
 
@@ -386,6 +571,13 @@ def calibrate_and_measure(args):
 
     # We will write out files per source.
     source_data = {}
+
+    # Create the ATCA observatory object.
+    atca = ephem.Observer()
+    atca.lon = '149.56394'
+    atca.lat = '-30.31498'
+    atca.elevation = 240
+    atca.horizon = '12'
     
     # Each segment is a source for some time, so we go through
     # them in order.
@@ -401,10 +593,12 @@ def calibrate_and_measure(args):
             #print " segment length is %.2f min" % (segment_length)
             iter_starttime = segments[i]['start_time'].datetime()
             finished = False
+            sourcep = None
             if source_name not in source_data:
                 # Find the source in the index data.
                 for j in xrange(0, len(index_data['sources'])):
                     if (index_data['sources'][j]['name'] == source_name):
+                        sourcep = index_data['sources'][j]
                         source_data[source_name] = {
                             'sourceName': source_name,
                             'rightAscension': index_data['sources'][j]['right_ascension'],
@@ -430,9 +624,9 @@ def calibrate_and_measure(args):
                                    iter_starttime, iter_endtime)
                 if (calout['code'] == 1):
                     # The calibration worked, we can now make a measurement.
-                    mset = measure(segments[i]['source'], "data", None,
+                    mset = measure(segments[i]['source'], "data", sourcep,
                                    index_data['freq_configs'][fcn],
-                                   iter_starttime, iter_endtime, calout)
+                                   iter_starttime, iter_endtime, calout, atca)
                     tso = { 'closurePhase': mset['closurePhase'],
                             'centreFreqs': calout['frequencies'] }
                     source_data[source_name]['timeSeries'].append(tso)
