@@ -273,7 +273,7 @@ sub changebanddir {
     my $band = shift;
 
     # Change to that directory.
-    my $cdir = "v3/".$band;
+    chomp(my $cdir = `find . -type d -name '$band'`);
     if (-d $cdir) {
 	print "changing directory to $cdir\n";
 	chdir $cdir;
