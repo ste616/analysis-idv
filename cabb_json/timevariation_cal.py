@@ -20,6 +20,7 @@ import shutil
 import numpy as np
 import sys
 import json
+import math
 import re
 
 # A routine to turn a Miriad type time string into a ephem Date.
@@ -401,8 +402,9 @@ def determine_array(srcname, freq):
     }
 
     # Get the antenna positions.
-    miriad.set_filter(filter_uvlist_antennas)
-    antpos = miriad.uvlist(vis=dsets[0], options="full,array")
+    miriad.set_filter('uvlist', filter_uvlist_antennas)
+    antlist = miriad.uvlist(vis=dsets[0], options="full,array")
+    antpos = antlist['antennas']
     # Adjust to make CA06 the reference.
     for i in xrange(0, 6):
         antpos[i]['coord_x'] = -1. * (antpos[i]['coord_x'] - antpos[5]['coord_x'])
@@ -411,8 +413,8 @@ def determine_array(srcname, freq):
     station_interval = 15.3
     array_stations = []
     for i in xrange(0, 6):
-        ew_offset = floor((antpos[i]['coord_y'] / station_interval) + 0.5) + 392
-        ns_offset = floor((antpos[i]['coord_x'] / station_interval) + 0.5) + 0
+        ew_offset = math.floor((antpos[i]['coord_y'] / station_interval) + 0.5) + 392
+        ns_offset = math.floor((antpos[i]['coord_x'] / station_interval) + 0.5) + 0
         if (ns_offset == 0):
             array_stations.append("W%d" % ew_offset)
         else:
@@ -464,6 +466,22 @@ def filter_uvfmeas(output):
             rv['stokes'] = index_elements[1]
 
     return rv
+
+def sortfirst(val):
+    return val[0]
+
+def readdata(fname):
+    # Read in a log file from uvfmeas.
+    d = []
+    with open(fname, "r") as fp:
+        loglines = fp.readlines()
+    for i in xrange(0, len(loglines)):
+        index_elements = loglines[i].split()
+        if (len(index_elements) > 2):
+            d.append([ float(index_elements[0]), float(index_elements[1]) ])
+    # Sort the array in ascending frequency order.
+    d.sort(key=sortfirst)
+    return d
 
 def measure(srcname, datadir, coords, fconfig, stime, etime, calresult, obs):
     print "  measuring source %s parameters" % srcname
@@ -546,7 +564,33 @@ def measure(srcname, datadir, coords, fconfig, stime, etime, calresult, obs):
                             stokes=stokes[i], device=outplot, select=selstring,
                             options=optionstring, log=datafile)
         ro['fluxDensityFits'].append(fm)
-        
+        vecdens = readdata(datafile)
+        ro['fluxDensityData'].append({
+            'stokes': "I", 'mode': "vector", 'data': vecdens })
+
+        datafile = "fluxdensities2.txt"
+        if (os.path.isfile(datafile)):
+            os.remove(datafile)
+
+        optionstring = "machine%s" % options[i]
+        outplot = "%s/%s_%.4f_sca.ps/cps" % (plotdir, srcname,
+                                             ((ro['mjdRange']['low'] +
+                                               ro['mjdRange']['high']) / 2.))
+        fm = miriad.uvfmeas(vis=",".join(isets), order=str(orders[i]),
+                            stokes=stokes[i], device=outplot, select=selstring,
+                            options=optionstring, log=datafile)
+        scadens = readdata(datafile)
+        dsum = 0.
+        dnum = 0
+        defect = 0.
+        for j in xrange(0, len(vecdens)):
+            if (vecdens[j][1] > 0):
+                dsum = dsum + (scadens[j][1] / vecdens[j][1])
+                dnum = dnum + 1
+        if (dnum > 0):
+            defect = float("%.1f" % (((dsum / dnum) - 1) * 100.))
+        ro['defect'].append({
+            'stokes': "I", 'defect': defect })
         
     return ro
                 
@@ -628,8 +672,16 @@ def calibrate_and_measure(args):
                                    index_data['freq_configs'][fcn],
                                    iter_starttime, iter_endtime, calout, atca)
                     tso = { 'closurePhase': mset['closurePhase'],
-                            'centreFreqs': calout['frequencies'] }
+                            'centreFreqs': calout['frequencies'],
+                            'fluxDensityData': mset['fluxDensityData'],
+                            'defect': mset['defect'],
+                            'mjdRange': mset['mjdRange'],
+                            'flaggedFraction': mset['flaggedFraction'],
+                            'hourAngleRange': mset['hourAngleRange'] }
+                    
                     source_data[source_name]['timeSeries'].append(tso)
+                    if (i == 0):
+                        source_data[source_name]['arrayConfiguration'] = mset['arrayConfiguration']
                 iter_starttime = iter_endtime + timedelta(seconds=cycle_time)
 
     # Output the JSON files.
