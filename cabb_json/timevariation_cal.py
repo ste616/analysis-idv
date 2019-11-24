@@ -446,17 +446,23 @@ def filter_uvfmeas(output):
         index_elements = outlines[i].split()
         if (len(index_elements) < 1):
             continue
+        print "UVFMEAS: %s" % outlines[i]
         if (index_elements[0] == "Coeff:"):
             for j in xrange(1, len(index_elements)):
-                rv['fitCoefficients'].append(float(index_elements[j]))
+                try:
+                    rv['fitCoefficients'].append(float(index_elements[j]))
+                except ValueError as e:
+                    rv['fitCoefficients'].append(index_elements[j])
         elif (index_elements[0] == "MFCAL"):
-            rv['alphaReference']['fluxDensity'] = float(
-                index_elements[2].replace(",", ""))
-            rv['alphaReference']['frequency'] = float(
-                index_elements[3].replace(",", ""))
+            comma_elements = outlines[i][11:].split(",")
+            if (comma_elements[0] != "*******"):
+                rv['alphaReference']['fluxDensity'] = float(comma_elements[0])
+            if (comma_elements[1] != "*******"):
+                rv['alphaReference']['frequency'] = float(comma_elements[1])
         elif (index_elements[0] == "Alpha:"):
             for j in xrange(1, len(index_elements)):
-                rv['alphaCoefficients'].append(float(index_elements[j]))
+                if (index_elements[j] != "*******"):
+                    rv['alphaCoefficients'].append(float(index_elements[j]))
         elif (index_elements[0] == "Scatter"):
             rv['fitScatter'] = float(index_elements[3])
         elif ((len(index_elements) > 3) and
@@ -489,6 +495,8 @@ def measure(srcname, datadir, coords, fconfig, stime, etime, calresult, obs):
     smtime = datetime_to_mirtime(stime)
     emtime = datetime_to_mirtime(etime)
     selstring = "time(%s,%s)" % (smtime, emtime)
+
+    print coords
     
     ro = { 'source': srcname, 'closurePhase': [], 'flaggedFraction': [],
            'rightAscension': coords['right_ascension'],
@@ -651,6 +659,10 @@ def calibrate_and_measure(args):
                             'timeSeries': []
                         }
                         break
+            else:
+                for j in xrange(0, len(index_data['sources'])):
+                    if (index_data['sources'][j]['name'] == source_name):
+                        sourcep = index_data['sources'][j]
             while not finished:
                 iter_endtime = segments[i]['end_time'].datetime()
                 segment_length = (iter_endtime - iter_starttime).total_seconds() / 60.
