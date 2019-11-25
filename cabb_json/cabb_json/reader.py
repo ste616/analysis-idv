@@ -198,8 +198,8 @@ class Measurement:
             try:
                 lowCf = lowFreq + ((chanFreq / self.channelWidth[i]) - 1) * self.channelWidth[i] / 2.
             except ZeroDivisionError:
-                print "can't imagine how you can divide by zero"
-                print self.channelWidth[i]
+                #print "can't imagine how you can divide by zero"
+                #print self.channelWidth[i]
                 lowCf = lowFreq
             # And then we continue making channels until we run over the band edge.
             bins.append(lowCf)
