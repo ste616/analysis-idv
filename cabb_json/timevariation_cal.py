@@ -301,6 +301,7 @@ def calibrate(srcname, calname, fconfig, stime, etime):
         if (uvout['nvisibilities'] > 0):
             # Do the calibration.
             print "  calibrating frequency %d MHz" % cfreqs[i][0]
+            miriad.gpcopy(vis=cset, out=dset)
             miriad.gpcal(vis=dset, interval="0.1", options="xyvary,nopol,qusolve",
                          nfbin="2", refant="3", select=selstring)
             miriad.gpboot(vis=dset, cal=cset, select=selstring)
@@ -312,7 +313,7 @@ def calibrate(srcname, calname, fconfig, stime, etime):
 
 
 def measure_closure_phase(srcname, freq, stime, etime):
-    print "    closure phase"
+    print "    closure phase %.1f MHz" % freq
     closurelog = "closure_log.txt"
     selstring = "time(%s,%s)" % (datetime_to_mirtime(stime),
                                  datetime_to_mirtime(etime))
@@ -342,7 +343,7 @@ def measure_closure_phase(srcname, freq, stime, etime):
     return rv
 
 def measure_flagging_statistic(srcname, freq, stime, etime):
-    print "    flagging"
+    print "    flagging %.1f MHz" % freq
     miriad.set_filter('uvfstats', filter_uvfstats)
     selstring = "time(%s,%s)" % (datetime_to_mirtime(stime),
                                  datetime_to_mirtime(etime))
@@ -446,7 +447,7 @@ def filter_uvfmeas(output):
         index_elements = outlines[i].split()
         if (len(index_elements) < 1):
             continue
-        print "UVFMEAS: %s" % outlines[i]
+        #print "UVFMEAS: %s" % outlines[i]
         if (index_elements[0] == "Coeff:"):
             for j in xrange(1, len(index_elements)):
                 try:
@@ -496,8 +497,6 @@ def measure(srcname, datadir, coords, fconfig, stime, etime, calresult, obs):
     emtime = datetime_to_mirtime(etime)
     selstring = "time(%s,%s)" % (smtime, emtime)
 
-    print coords
-    
     ro = { 'source': srcname, 'closurePhase': [], 'flaggedFraction': [],
            'rightAscension': coords['right_ascension'],
            'declination': coords['declination'], 'mjdRange': {
