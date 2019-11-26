@@ -148,12 +148,6 @@ def analyse(args):
         bandFrequencies = range(int(args['--low-frequency']),
                                 int(args['--high-frequency']),
                                 int(args['--frequency-interval']))
-    #print bandFrequencies
-    #if ("16cm" in allBands):
-    #    bandFrequencies = range(1400, 3000, 100)
-    #    if ("4cm" in allBands):
-    #        bandFrequencies = range(1400, 10600, 100)
-    #bandFrequencies = [ 4806, 8406 ]
     maxDiff = spectralAveraging
 
     print ""
