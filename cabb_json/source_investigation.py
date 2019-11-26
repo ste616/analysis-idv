@@ -2,12 +2,17 @@
 """Time-variable analysis for ATCA
 
 Usage:
-  source_investigation.py <sourcename> [--plot-dir=<dir>] [--root-dir=<dir>] [--web-dir=<dir>]
+  source_investigation.py <sourcename> [--plot-dir=<dir>] [--root-dir=<dir>] [--web-dir=<dir>] [--spectral-averaging=<width>] [--frequency=<freq>]... [--low-frequency=<freq>] [--high-frequency=<freq>] [--frequency-interval=<intv>]
 
--h --help          show this
--p --plot-dir DIR  output all the plots and other outputs in the specified DIR [default: .]
--r --root-dir DIR  find all the input data files below this DIR [default: .]
--w --web-dir DIR   output all the web page data in the specified DIR [default: .]
+-h --help                      show this
+-p --plot-dir DIR              output all the plots and other outputs in the specified DIR [default: .]
+-r --root-dir DIR              find all the input data files below this DIR [default: .]
+-w --web-dir DIR               output all the web page data in the specified DIR [default: .]
+-A --spectral-averaging WIDTH  how many MHz to average into each data point [default: 1.0]
+-f --frequency FREQ            include this frequency (MHZ) in the plots (no default)
+-L --low-frequency FREQ        lowest frequency (MHz) to plot [default: 4500]
+-H --high-frequency FREQ       highest-frequency (MHz) to plot [default: 10600]
+-I --frequency-interval INTV   the interval (MHz) between each plotted frequency [default: 100]
 """
 
 from docopt import docopt
@@ -125,7 +130,8 @@ def analyse(args):
         for j in xrange(0, len(epochData[i]['bandsPresent'])):
             if epochData[i]['bandsPresent'][j] not in allBands:
                 allBands.append(epochData[i]['bandsPresent'][j])
-        fdOutputLines.append([ sourceName, epochData[i]['data'].rightAscension,
+        fdOutputLines.append([ args['<sourcename>'],
+                               epochData[i]['data'].rightAscension,
                                epochData[i]['data'].declination,
                                epochData[i]['nTimeIntervals'],
                                epochData[i]['mjdLow'], epochData[i]['mjdHigh'],
@@ -133,14 +139,20 @@ def analyse(args):
 
     # Some settings we need to use later.
     frequencyUnits = "MHz"
-    spectralAveraging = 16
-    #bandFrequencies = [ 4500, 5000, 5500, 6000, 6500, 7000, 7500, 
-    #                    8000, 8500, 9000, 9500, 10000, 10500, 17400 ]
-    bandFrequencies = range(4500, 10600, 100)
-    if ("16cm" in allBands):
-        bandFrequencies = range(1400, 3000, 100)
-        if ("4cm" in allBands):
-            bandFrequencies = range(1400, 10600, 100)
+    spectralAveraging = float(args['--spectral-averaging'])
+    if (len(args['--frequency']) > 0):
+        bandFrequencies = []
+        for i in xrange(0, len(args['--frequency'])):
+            bandFrequencies.append(int(args['--frequency'][i]))
+    else:
+        bandFrequencies = range(int(args['--low-frequency']),
+                                int(args['--high-frequency']),
+                                int(args['--frequency-interval']))
+    #print bandFrequencies
+    #if ("16cm" in allBands):
+    #    bandFrequencies = range(1400, 3000, 100)
+    #    if ("4cm" in allBands):
+    #        bandFrequencies = range(1400, 10600, 100)
     #bandFrequencies = [ 4806, 8406 ]
     maxDiff = spectralAveraging
 
@@ -187,9 +199,11 @@ def analyse(args):
                     completeTimeSeries['fluxDensities'][pos] += timeSeries['fluxDensities'][j]
                 else:
                     # Make a new frequency object.
-                    completeTimeSeries['frequencies'].append(timeSeries['frequencies'][j])
+                    completeTimeSeries['frequencies'].append(
+                        timeSeries['frequencies'][j])
                     completeTimeSeries['times'].append(timeSeries['times'][j])
-                    completeTimeSeries['fluxDensities'].append(timeSeries['fluxDensities'][j])
+                    completeTimeSeries['fluxDensities'].append(
+                        timeSeries['fluxDensities'][j])
 
         # Make a plot of the individual day's time series.
         roughMJD = math.floor(epochData[i]['mjdLow'])
@@ -237,7 +251,7 @@ def analyse(args):
 
     # We store our timescale results into an object that we will turn into a JSON
     # output file at the end.
-    timescaleResults = { sourceName: [] }
+    timescaleResults = { args['<sourcename>']: [] }
     # Keep track of the maximum time scale that we find.
     maxTimescale = 0.
     for i in xrange(0, len(epochData)):

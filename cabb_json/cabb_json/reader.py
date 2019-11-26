@@ -77,6 +77,7 @@ class Measurement:
             stokes = "I"
         self.stokes = stokes
         self.storeFromObject(measureObject)
+        self.averagedCache = {}
         return None
 
     def storeFromObject(self, measureObject=None):
@@ -173,6 +174,12 @@ class Measurement:
             options['spectralAveraging'] = 1.0
         if 'frequencyUnits' not in options:
             options['frequencyUnits'] = "MHz"
+        # Check the cache.
+        cacheKey = "av%.1f_%s_%s" % (options['spectralAveraging'],
+                                     options['frequencyUnits'],
+                                     options['splitBand'])
+        if (cacheKey in self.averagedCache):
+            return self.averagedCache[cacheKey]
         # Grab the separated arrays from the Spectrum.
         if self.spectrum is None:
             return None
@@ -182,6 +189,7 @@ class Measurement:
         ampBins = []
         nBins = []
         #print " DEBUG: preparing"
+        #print specArrays
         for i in xrange(0, len(self.centreFrequencies)):
             bins = []
             amps = []
@@ -220,6 +228,7 @@ class Measurement:
             nBins.append(n)
         # Now we go through and average the spectrum into those bins.
         #print " DEBUG: channelising"
+        #print freqBins
         for i in xrange(0, len(self.centreFrequencies)):
             assign = np.digitize(specArrays['freq'], freqBins[i])
             amps = np.array(specArrays['amp'])
@@ -264,6 +273,9 @@ class Measurement:
                 f = [ (b / 1000.) for b in f ]
             outSpectrum['freq'].append(f)
             outSpectrum['amp'].append(a)
+
+        # Keep a cache.
+        self.averagedCache[cacheKey] = outSpectrum
         return outSpectrum
     
 # TimeSeries class: this stores a series of spectra.
@@ -390,27 +402,16 @@ class Source:
                         else:
                             allFreqs[spectrum['freq'][0][j]] = { 'frequency': spectrum['freq'][0][j],
                                                               'n': 1 }
-        # Eliminate any non-compliant frequencies.
-        for f in allFreqs:
-            # Does it have enough values?
-            if allFreqs[f]['n'] < minimumPresent:
-                del allFreqs[f]
-                continue
-            # Are we looking for something that is always present?
-            if alwaysPresent == True and allFreqs[f]['n'] < nSpectra:
-                del allFreqs[f]
-                continue
 
-        # Now find the closest frequency.
-        closestF = 0
-        minDiff = 1000000
-        for f in allFreqs:
-            diff = abs(allFreqs[f]['frequency'] - frequency)
-            if diff < minDiff:
-                minDiff = diff
-                closestF = allFreqs[f]['frequency']
+        # Sort the frequencies.
+        sallFreqs = sorted(allFreqs.iteritems(),
+                           key = lambda x: abs(x[1]['frequency'] - frequency))
 
-        return closestF
+        # Get the closest which has the necessary number of frequencies.
+        for i in xrange(0, len(sallFreqs)):
+            if (sallFreqs[i][1]['n'] >= minimumPresent):
+                return sallFreqs[i][1]['frequency']
+        return 0
             
     def getTimeSeries(self, options=None):
         # We return time-series for the frequencies the user asks for, as controlled
@@ -436,6 +437,7 @@ class Source:
             options['maxDiff'] = 10000.
         if 'alwaysPresent' not in options:
             options['alwaysPresent'] = True
+        #print options
         # Assemble the data.
         data = { 'times': [], 'timeUnits': options['timeUnits'], 'sourceName': self.name,
                  'stokes': options['stokes'], 'frequencies': [], 'fluxDensities': [],
@@ -455,6 +457,8 @@ class Source:
         # Find the nearest frequency for each specified frequency.
         nearFrequencies = []
         for i in xrange(0, len(options['frequencies'])):
+            #print "DEBUG: calculating nearest frequency %d / %d" % (
+            #    (i + 1), len(options['frequencies']))
             near = self.nearestFrequency(frequency=options['frequencies'][i],
                                          alwaysPresent=options['alwaysPresent'],
                                          frequencyUnits=options['frequencyUnits'],
@@ -472,6 +476,8 @@ class Source:
                 nearFrequencies.append(near)
         # Form the time series for the frequencies we found.
         for i in xrange(0, len(nearFrequencies)):
+            #print "DEBUG: forming time series %d / %d" % ( ( i + 1),
+            #                                               len(nearFrequencies) )
             fds = []
             tms = []
             for j in xrange(0, len(spectraArray)):

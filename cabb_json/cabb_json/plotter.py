@@ -186,8 +186,10 @@ def spectraPlot(spectra, timeRange=None, plotType="dynamic", frequencyRange=None
             plt.close()
 
 # A routine to plot up time series.
-def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZero=False, ampRange=None,
-                   outputName='test_timeSeriesPlot.png', title=None, plotLegend=True):
+def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity",
+                   includeZero=False, ampRange=None,
+                   outputName='test_timeSeriesPlot.png', title=None,
+                   plotLegend=True):
 
     # Get some details about the data.
     # Minimum and maximum available times.
@@ -229,7 +231,8 @@ def timeSeriesPlot(timeSeries, timeRange=None, plotType="fluxDensity", includeZe
     # Make the plot.
     # Set up a colour map.
     ax = plt.axes()
-    ax.set_color_cycle([ plt.cm.gist_rainbow(i) for i in np.linspace(0, 1, len(timeSeries['frequencies'])) ])
+    ax.set_prop_cycle('color', plt.cm.gist_rainbow(
+        np.linspace(0, 1, len(timeSeries['frequencies']))))
     for i in xrange(0, len(timeSeries['frequencies'])):
         sLabel = ""
         if timeSeries['frequencyUnits'].lower() == "mhz":
