@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 """Time-variable calibration for ATCA
 
 Usage:

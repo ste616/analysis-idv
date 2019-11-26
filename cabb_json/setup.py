@@ -12,7 +12,8 @@ setup(name='analysis_idv',
       author='Jamie Stevens', author_email='Jamie.Stevens@csiro.au',
       license='MIT', packages=[ 'analysis_idv' ],
       install_requires=[
-          'astropy', 'docopt', 'matplotlib'
+          'astropy', 'docopt', 'matplotlib', 'scipy', 'dominate',
+	  'ephem', 'mirpy'
       ],
       zip_safe=False)
 
