@@ -416,18 +416,19 @@ def timescaleVariationPlot(allEpochData=None, outputName='test_timescalevar.png'
         # We'll plot a single frequency's timescale variation.
         for i in xrange(0, len(allEpochData)):
             ed = allEpochData[i]
-            for j in xrange(0, len(ed['acf']['frequencies'])):
-                if ed['acf']['frequencies'][j] == frequency:
-                    # This is the frequency we want.
-                    if ed['acf']['timescale'][j]['value'] is not None:
-                        timescales.append(ed['acf']['timescale'][j]['value'] / 60.)
-                        timescaleErrors.append(ed['acf']['timescale'][j]['valueError'] / 60.)
-                        timescaleLimit.append(ed['acf']['timescale'][j]['lowerLimit'])
-                    else:
-                        timescales.append(0.)
-                        timescaleErrors.append(0.)
-                        timescaleLimit.append(True)
-                    doys.append(ed['timeTuple'][3])
+            if 'acf' in ed:
+                for j in xrange(0, len(ed['acf']['frequencies'])):
+                    if ed['acf']['frequencies'][j] == frequency:
+                        # This is the frequency we want.
+                        if ed['acf']['timescale'][j]['value'] is not None:
+                            timescales.append(ed['acf']['timescale'][j]['value'] / 60.)
+                            timescaleErrors.append(ed['acf']['timescale'][j]['valueError'] / 60.)
+                            timescaleLimit.append(ed['acf']['timescale'][j]['lowerLimit'])
+                        else:
+                            timescales.append(0.)
+                            timescaleErrors.append(0.)
+                            timescaleLimit.append(True)
+                        doys.append(ed['timeTuple'][3])
                     
         ndoys = np.array(doys)
         ntimescales = np.array(timescales)

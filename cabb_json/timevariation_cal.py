@@ -665,10 +665,13 @@ def calibrate_and_measure(args):
             while not finished:
                 iter_endtime = segments[i]['end_time'].datetime()
                 segment_length = (iter_endtime - iter_starttime).total_seconds() / 60.
+                #print " segment length is %.2f min" % (segment_length)
+                
                 if ((segment_length < args['--segment']) or
                     (segment_length < (args['--segment'] + args['--slop']))):
                     # This will be all we need to do.
                     finished = True
+                    #print "finishing this go"
                 else:
                     iter_endtime = iter_starttime + timedelta(minutes=args['--segment'])
                 # Calibrate this chunk.
@@ -711,5 +714,7 @@ if __name__ == '__main__':
         (not os.path.isdir(arguments['<dataset>']))):
         print "No valid dataset found."
         valid = False
+    arguments['--segment'] = float(arguments['--segment'])
+    arguments['--slop'] = float(arguments['--slop'])
     if (valid == True):
         calibrate_and_measure(arguments)

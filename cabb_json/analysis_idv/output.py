@@ -41,11 +41,12 @@ def outputIndex(epochData=None, outputDirectory=".", outputName=None,
                     with tr():
                         j = 0
                         while j < epochsPerRow and i < len(epochData):
-                            with td():
-                                a("%s (DOY %04d-%03d)" % (epochData[i]['epochName'],
-                                                          epochData[i]['timeTuple'][2],
-                                                          epochData[i]['timeTuple'][3]),
-                                  href=epochData[i]['htmlTimescalesFile'])
+                            if 'timeTuple' in epochData[i]:
+                                with td():
+                                    a("%s (DOY %04d-%03d)" % (epochData[i]['epochName'],
+                                                              epochData[i]['timeTuple'][2],
+                                                              epochData[i]['timeTuple'][3]),
+                                      href=epochData[i]['htmlTimescalesFile'])
                             i += 1
                             j += 1
             div("Timescale evolution plots", _class="headingClass")
